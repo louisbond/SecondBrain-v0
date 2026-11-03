@@ -1,0 +1,426 @@
+# SecondBrain v0.5.0
+
+> 自用优先的个人知识库：**采集 → 提炼 → 创作 → 运维**
+> 桌面常驻服务 + 本机浏览器 UI，不上外网。
+
+```
+A 进货  →  B 提炼  →  C 创作  →  D 运维
+（原文）    （AI摘要+手稿）  （笔记）    （回顾/标签/归档）
+```
+
+核心原则：**AI 起草、人工逐条核准**；Markdown 是唯一真相源，SQLite 索引随时可重建。
+
+---
+
+## 快速开始
+
+### 开发态
+
+```bash
+# 1) 后端依赖
+cd backend
+python -m pip install -r requirements.txt
+
+# 2) 前端构建
+cd ../frontend
+npm install
+npm run build          # 产物在 frontend/dist
+
+# 3) 启动
+cd ../backend
+python run.py
+# → http://127.0.0.1:7688
+```
+
+前端热重载开发（两个终端）：
+
+```bash
+# 终端 A：后端
+cd backend && python run.py --no-frontend
+
+# 终端 B：前端
+cd frontend && npm run dev     # → http://localhost:5173（已代理 /api）
+```
+
+### 打包分发（P10）
+
+```bash
+cd backend
+pyinstaller secondbrain.spec --noconfirm
+# 产物：dist/SecondBrain/SecondBrain.exe
+```
+
+`bin/` 目录放 `yt-dlp.exe` 与 `ffmpeg.exe`，会被一并打包，实现离线部署。
+
+---
+
+## 目录结构
+
+```text
+secondbrain/
+├─ backend/
+│  ├─ app/
+│  │  ├─ core/         config / db / parser / tokenizer / vault / fts
+│  │  ├─ adapters/     bilibili / douyin / kuaishou / xiaohongshu / web
+│  │  ├─ providers/    ai_providers（workbuddy→方舟 / ollama / openai_compat）
+│  │  │                ai_service（prompt 模板 + JSON 契约 + 重试）
+│  │  ├─ services/     ingest / review / search / notes / index / tag
+│  │  │                recap / asr / embedding / backfill / notifier / autostart
+│  │  ├─ workers/      queue（jobs 队列）/ pipeline（worker 编排）/ scheduler（周报）
+│  │  └─ api/routes/   collect items jobs review search notes tags recap settings upload vault
+│  ├─ tests/           单测 / E2E 冒烟 / 性能验证
+│  ├─ run.py           启动入口
+│  └─ secondbrain.spec PyInstaller 打包
+├─ frontend/           Vue 3 + Vite + <script setup>
+├─ config/config.toml  配置
+├─ bin/                yt-dlp / ffmpeg（可选）
+└─ data/               数据库与默认 vault
+```
+
+---
+
+## Vault 结构
+
+工具**独占写入** vault，Obsidian 只读查看：
+
+```text
+ObsidianVault/
+├─ 01_Inbox/       A 层：原文全文 + 字幕 + 截图 + 来源
+├─ 02_Processed/   B 层：AI 摘要 + 个人手稿 + 受控标签 + 相关链接
+├─ 03_Notes/       C 层：创作笔记（form: fragment | article）
+├─ assets/         截图等附件
+├─ 99_Archive/     手动归档
+└─ _reports/       周报（工具生成）
+```
+
+存量笔记**保留原位置原结构**，工具只建索引不迁移。
+
+---
+
+## 关键设计
+
+### 双摘要：AI 在上，手稿在下
+
+核准页是**垂直驾驶舱**（不并排）：
+
+```
+┌─ 标题（可编辑，默认取 AI 建议）
+├─ 🤖 AI 摘要（要点式 / 结构化分区，标注模型名）
+│    · 标签建议：☑ ☐ +待定标签（词表外需你确认）
+│    · 分区建议：☑
+├─ ✍️ 个人手稿（按钮「以 AI 摘要为底稿」一键预填）
+├─ 🔗 相关笔记（embedding 召回，真实存在的库内笔记）
+│    · LLM 关键词提示（仅展示，不生成链接）
+├─ 📄 回查原文 → 新标签页打开 A 层 md
+└─ [确认入库]  逐条处理，无批量全收
+```
+
+手稿留空也可入库（软门槛），但会进入「待补手稿」清单，由回顾卡片持续提醒。
+
+### 字段语义（避免自相矛盾）
+
+| 字段 | 含义 |
+|---|---|
+| `tags` | **仅在核准确认后写入** = AI 建议勾选 ∪ 用户手动新增。拒绝全部建议 → 空数组，不继承任何 AI 值 |
+| `ai_suggested_tags` | AI 原始建议，**永远保留**供追溯 |
+| `embedding_related` | embedding 余弦召回，**仅展示**，不参与链接解析 |
+| `llm_related_keywords` | LLM 只输出关键词，**永不直接生成库内笔记链接** |
+| `confirmed_related` | 唯一参与反链/图谱的链接字段 |
+| `digested` | 手稿非空后置 true（软门槛） |
+
+### 两级受控词表
+
+`partitions`（大类）+ `tags`（细粒度）。AI 只能从词表选；词表外的建议进入
+「待定标签」，由用户在核准页勾选后才入库。合并标签 A→B 会自动改写受影响
+md 的 frontmatter，并触发 FTS 与向量增量更新。
+
+### 中文搜索
+
+FTS5 `unicode61` 对中文按字符切分，因此写入时构造 **jieba 词 + bigram_cjk**
+的并集载荷，查询侧对称。两字词、子串均可命中。jieba 不可用时自动降级为纯
+bigram，并在 UI 顶部显式告警 `search_mode=bigram`。
+
+排序权重由 bm25 **列权重**表达（title 10 > tags 6 > summary 4 > manuscript 3 > body 1），
+C 层结果永远排在 B 层之前。
+
+### 分区（受控词表的大类）
+
+- **词表来源**：标签页「冷启动扫描存量」→ 分区 = 存量 frontmatter 的 `partitions`
+  **+ vault 顶层目录名**（排除工具目录与隐藏目录）。目录天然就是"大类"，
+  比让用户从零手填分区更合用。
+- **核准页可补选**：AI 建议之外，还能「从分区词表补选」或当场「新分区，回车创建并选中」。
+- **分区关联必须落库**：`note_partitions` 表在入库 / 重建索引 / C 层笔记三处都要写，
+  否则「按分区搜索」与分区计数永远是 0。
+
+### AI Provider 与自动降级
+
+| 链路 | 配置 | 角色 |
+|---|---|---|
+| workbuddy | WorkBuddy 自带的 **CodeBuddy CLI**（npm 包 `@genie/agent-cli`）→ 方舟 API | 默认主链 |
+| ollama | `http://127.0.0.1:11434/v1`，Qwen-7B | 自动降级备链 |
+| openai_compat | 任意 OpenAI 兼容端点（火山方舟等） | 手动切换；**设置页可直接填 API Key** |
+
+主链连续失败 ≥3 次 / 429 / 额度耗尽 → 自动切 ollama 并 toast 告知；
+**恢复后需手动切回**（避免来回抖动）。
+
+> **认证类错误不触发降级**：CLI 未登录属于"需要用户操作"，不是"主链故障"。
+> 否则会降级到一个同样没配置的备链，反而更难排查。
+
+#### 主链的三个已知硬约束（实机核查）
+
+1. **CLI 认证态在系统 keychain**，探测不到，只能交互式登录（设置页有
+   「打开终端完成 CLI 登录」按钮，会生成 .cmd 在新控制台里跑 `codebuddy`）。
+2. **CLI 的默认端口 5452 是硬编码的**，而 5452 正是 WorkBuddy 桌面端占用的
+   服务代理端口 → `EADDRINUSE`。主命令接受 `--port`，`daemon` 子命令不接受。
+3. **受限环境（沙箱）里 CLI 读不到认证文件**，日志特征：
+   `EPERM … auth/workbuddy-desktop.info` → 此时会表现为"未登录"。
+   解决办法：让 SecondBrain 跑在沙箱外（自己双击 exe，或在自己终端里启动服务）。
+
+#### 不想折腾 CLI？用方舟 OpenAI 兼容端点
+
+设置页 → 「API 密钥（OpenAI 兼容端点）」→ 填 base_url / 模型 ID / API Key →
+「保存并切换到该链」。密钥只写入 `config/secrets.json`（不进 config.toml），
+端点与模型写入 `config.toml` 的 `[ai.openai_compat]`。这条链路不依赖 CLI、不依赖沙箱。
+
+已实测可用（火山方舟 `https://ark.cn-beijing.volces.com/api/v3`）：
+
+| 环节 | 实测 |
+|---|---|
+| `GET /models` | HTTP 200，返回该 key 可用的 138 个模型 |
+| `POST /chat/completions` | HTTP 200，10s 返回 |
+| 摘要契约（真实条目） | 约 120s 出 5 条要点 → 核准 → B 层落盘 → 搜索命中 |
+
+> **模型选择**：默认填的 `doubao-seed-2-1-pro-260915` 质量好但**偏慢**（一次摘要约 2 分钟）。
+> 批量场景可在设置页把模型改成 `doubao-seed-1-6-flash-250828` 一类 flash 模型，速度差一个量级。
+
+> **三个必须记住的实现约束**（都是踩过的坑）：
+> 1. `health()` 必须带 `Authorization` 头，否则带密钥的端点永远显示 401；
+> 2. `ProviderRouter` **不能缓存** `AppConfig` 对象——`store.reload()` 是整体替换，
+>    缓存旧对象会导致新填的 api_key 不生效（同样表现为 401）；
+> 3. 401/403 属认证类错误，**不触发降级**（备链多半也没配）。
+
+#### CodeBuddy CLI 接入（实机核查后的修正）
+
+设计文档 v0.5.0 附录 A 假设了 `wbuddy` / `codebuddy` 两个命令，实机核查结论：
+
+| 设计文档 | 实际情况 |
+|---|---|
+| `wbuddy start` / `wbuddy status` | **`wbuddy` 命令不存在**（作者的臆测命名）。语义对应是 `codebuddy daemon start/status` |
+| `codebuddy` 在 PATH | **不在 PATH**——WorkBuddy 桌面版自带同一套引擎，入口在 `<安装目录>/resources/app.asar.unpacked/cli/bin/codebuddy`（node 脚本，需 Node ≥ 18.20.8） |
+| `codebuddy -p ... -y --output-format json` | ✅ **三个参数全部真实存在**，与设计文档一致 |
+
+实现要点（`backend/app/core/cli_locator.py`）：
+
+- **自动定位 CLI**：配置 `cli_path` → 内置 `bin/` → WorkBuddy 安装目录 → PATH；
+- **注入 `--port`**：这个 WorkBuddy 定制版 CLI 的 HTTP server 默认端口是**硬编码 5452**，
+  而 5452 正是 WorkBuddy 桌面端自己占用的服务代理端口 → `EADDRINUSE`。
+  主命令（`-p`/`--version`）接受 `--port`，但 `daemon` 子命令不接受，
+  所以只在主命令上注入一个自动分配的空闲端口；
+- **剥离环境变量**：`CODEBUDDY_SERVICE_PROXY_URL`（端口冲突源）与
+  `HTTP_PROXY`/`HTTPS_PROXY`（会让 CLI 内部 `setProxy` 抛
+  `Right-hand side of 'instanceof' is not callable` 并刷一屏堆栈）；
+- **`--tools ""`**：摘要任务用不上任何工具，禁用后显著提速与省 token；
+- **健康检查用 `--version`**：快、免费、不需要认证；`-p` 调用失败时若报
+  "Authentication required" 会给出明确的登录指引。
+
+#### 首次使用需要登录一次
+
+CLI 的登录是交互流程（选登录方式 → 浏览器认证），非交互子进程做不了。
+设置页 → AI Provider → **「打开终端完成 CLI 登录」** 会弹出一个终端窗口，
+在里面选「Log in via Chinese Site」（国内站），浏览器完成认证即可。
+登录态写入 `%USERPROFILE%\.codebuddy`。
+
+单次调用产出全部结构化字段（title/summary/summary_type/tags/new_tags/
+partitions/keywords/confidence）。JSON 破损或字段缺失 → 自动重试 2 次
+（重试时附上错误说明）→ 仍失败落 `ai_failed`，可在队列页手动重试。
+
+### 平台适配器能力诚实分级
+
+| 平台 | 等级 | 路径 | 兜底 |
+|---|---|---|---|
+| B站 | **完整可用** | bilibili web API + cookie（含 AI 字幕） | 无字幕→ASR；接口失效→yt-dlp→手动 |
+| 通用网页 | 完整可用 | trafilatura → Playwright | 手动粘贴 |
+| 小红书 | 部分可用 | 分享链解析 + `__INITIAL_STATE__` | 手动粘贴 |
+| 抖音 / 快手 | **不稳定** | yt-dlp 分享短链 | 「简介+ASR+手动」为**常态路径** |
+
+抖音/快手依赖 yt-dlp 的现实支持度，不做虚假承诺——UI 直接标明支持等级。
+
+### 状态机
+
+```text
+queued → extracting ─┬→ extracted → ai_processing ─┬→ pending_review → reviewed
+                     └→ extract_failed（手动粘贴→extracted）  └→ ai_failed
+reviewed →（手动）→ archived
+```
+
+jobs 状态持久化于 SQLite：**休眠唤醒后自动续跑**。
+
+---
+
+## 可用性边界（如实标注）
+
+- 笔记本**休眠或关机 = 服务下线**，ASR 队列暂停；唤醒后自动续跑。
+  建议接通电源时把电源策略设为「永不睡眠」，以便过夜批处理。
+- LAN 开关**默认关闭**；开启后强制 token 校验（`hmac.compare_digest` 比对），
+  静态页壳可无 token 加载，API 必须 token。
+- 端口默认 **7688**，被占用自动顺延（7689、7690…）并在 UI 顶部提示实际端口。
+- embedding 不可用 → 相关召回降级为关键词匹配，不阻塞主流程。
+
+---
+
+## 测试
+
+```bash
+cd backend
+
+# 1) 单元 + 集成测试（79 项）
+python -m pytest tests/test_secondbrain.py -q
+
+# 2) 端到端冒烟（对着运行中的服务，51 项）
+python tests/e2e_smoke.py
+
+# 3) 真实管线（真实 B站链接跑完整条链路，39 项）
+python tests/live_pipeline_test.py
+
+# 4) 边界场景（手改 md / 标签合并 / 归档 / 路径穿越 / 并发 / 上传，32 项）
+python tests/edge_case_test.py
+
+# 5) 前端渲染（headless Edge 渲染真实页面查 DOM，32 项）
+python tests/frontend_render_test.py
+
+# 6) 性能验证（对照 §11 量化指标，5 项）
+python tests/perf_check.py 5000
+```
+
+> `frontend_render_test.py` 用本机 Edge 的 `--headless=new --dump-dom` 渲染，
+> 能抓到组件运行时错误、API 调用失败、路由未匹配——比只检查 HTTP 200 强得多。
+
+### 性能实测（5000 条）
+
+| 指标 | 目标 | 实测 |
+|---|---|---|
+| 搜索 P95 | < 200ms | **35ms** |
+| 反链查询 P95 | < 50ms | **0.007ms** |
+| embedding 单条编码 P95 | < 300ms | **0.56ms**（降级后端） |
+| 全库 FTS/反链重建 | < 60s | **11.5s** |
+| embedding 全库批处理 | < 60min | **8.3s** |
+
+> 真实 embedding 后端（bge-m3 ONNX）未安装时自动降级为确定性哈希向量，
+> 流程可跑通但召回质量下降，设置页会明示。
+
+---
+
+## ASR 转写（已实测跑通）
+
+真实中文 B站视频 → yt-dlp 抽音频 → faster-whisper 转写，**110s 出 756 字中文**。
+
+两处需要留意：
+
+1. **不依赖 ffmpeg**——`bestaudio` 直取原始音频流（B站本身就是 m4a），
+   faster-whisper 用 PyAV 直接解码。只有平台提供分离流时才回落到
+   `-x --audio-format m4a` 的转码路径（那步才需要 ffmpeg）。
+2. **模型可离线**——`[asr] model_dir` 指向本地模型目录即可离线加载；
+   留空则从 HuggingFace Hub 下载。国内网络可设 `[model] hf_endpoint` 指向镜像。
+
+> PyAV ≥ 14 移除了 `av.open()` 的 `metadata_errors` 参数，而 faster-whisper 1.2.x
+> 仍在传它——已在 `app/services/audio_compat.py` 做兼容处理（PyAV 13 没有
+> Python 3.13 的 wheel，装不上，只能兼容）。
+
+当前环境用的是 ModelScope 上的 `faster-whisper-tiny`（识别质量一般，
+换成 small/medium 会明显更好）。
+
+---
+
+## 配置
+
+见 `config/config.toml`（对应设计文档附录 A）。关键项：
+
+```toml
+[vault]
+path = "D:/ObsidianVault"
+
+[web]
+port = 7688
+allow_lan = false          # true 时强制 token
+
+[ai]
+provider = "workbuddy"     # workbuddy / ollama / openai_compat
+auto_fallback = true
+
+[ai.embedding]
+model = "bge-m3"           # 本地 CPU
+dim = 1024
+
+[asr]
+model_size = "small"       # small / medium
+compute = "int8"
+concurrency = 1
+# model_dir = "D:/models/faster-whisper-small"   # 本地模型目录（离线加载）
+
+[model]
+# hf_endpoint = "https://hf-mirror.com"   # 模型下载镜像
+
+[collect]
+batch_limit = 100
+
+[duplicate]
+vector_threshold = 0.85
+```
+
+环境变量覆盖：`SECOND_BRAIN_VAULT`、`SECOND_BRAIN_CONFIG`、`SECOND_BRAIN_HOME`、
+`SECOND_BRAIN_PORT`、`SECOND_BRAIN_ALLOW_LAN`。
+
+---
+
+## 开机自启
+
+设置页 → 「开机自启」按钮，注册 Windows 任务计划程序（登录时启动）：
+
+```bash
+schtasks /Create /TN "SecondBrain" /TR "<python> -m uvicorn app.main:app --host 127.0.0.1 --port 7688" /SC ONLOGON /RL LIMITED /F
+```
+
+---
+
+## 独立运行（不依赖任何会话）
+
+打包产物在 `<workspace>\Systems666\SecondBrain\`：
+
+```text
+SecondBrain/
+├─ SecondBrain.exe        双击即用：自动起服务 + 自动开浏览器
+├─ _internal/             前端 / 内嵌依赖 / yt-dlp / 配置模板
+├─ config/
+│  ├─ config.toml         用户可改（首次运行自动从模板生成）
+│  └─ secrets.json        密钥（方舟 API Key）
+├─ data/                  数据库、缓存（exe 同级）
+├─ 注册开机自启.cmd        双击 → 注册登录自启任务（不需要管理员）
+└─ 取消开机自启.cmd
+```
+
+**自己启动才是不受限制的**：双击 exe 启动的实例不在任何沙箱里，
+CLI 登录（读 keychain）、开机自启注册都能正常工作。
+由 AI 会话启动的实例会继承沙箱限制 → `schtasks` 报「拒绝访问」、CLI 读不到认证文件。
+
+### phpStudy 反向代理（可选，固定入口）
+
+已把站点配置装到
+`D:\AllApp666\phpstudy_pro\Extensions\Nginx1.15.11\conf\vhosts\secondbrain.conf`，
+在 phpStudy 面板里启动 Nginx 后即可用 `http://127.0.0.1:8088` 访问。
+想用域名 `secondbrain.local`，需管理员权限在 hosts 里加一行
+`127.0.0.1 secondbrain.local`。
+
+> MySQL 用不上：md 是唯一真相源，SQLite 索引随时可重建。
+
+## 已知限制
+
+| 项 | 现状 |
+|---|---|
+| 抖音 / 快手抓取 | 依赖 yt-dlp 的现实支持度，不稳定；已降级为常态手动路径 |
+| B站字幕 | 需要 cookie 才能拿到 AI 字幕；无 cookie 时只有标题+简介，靠 ASR 补 |
+| 小红书 | 未登录有反爬，需 cookie |
+| embedding | 未装 bge-m3 时降级为哈希向量，召回质量下降 |
+| ASR 模型 | 当前用 tiny（识别一般），换 small/medium 更好；模型可本地离线加载 |
+| AI 主链 | 需 CLI 交互式登录一次；**若服务跑在受限环境（沙箱）里，CLI 读不到认证文件会表现为"未登录"**——让服务在沙箱外启动即可；或改用设置页的 OpenAI 兼容端点 |
+| 移动端 | 已砍（桌面端工具） |
+| 托盘图标 | 未实现（可直接关浏览器 / `POST /api/shutdown`） |

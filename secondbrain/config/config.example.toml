@@ -1,0 +1,87 @@
+# SecondBrain 配置模板（打包版首次运行会自动复制为 config.toml）
+#
+# 路径说明：
+# - 相对路径都相对「程序所在目录」（exe 同级）；
+# - 绝对路径直接使用；
+# - 留空或删除某个键 = 用程序默认值。
+
+[vault]
+# 你的 Obsidian 库根目录（绝对路径）
+path = "<workspace>/Systems666/ChaoNaoKu"
+inbox_dir = "01_Inbox"
+processed_dir = "02_Processed"
+notes_dir = "03_Notes"
+assets_dir = "assets"
+archive_dir = "99_Archive"
+reports_dir = "_reports"
+
+[storage]
+# 留空 = 用程序同级目录下的 data/（推荐）
+data_dir = ""
+db_path = ""
+# 内嵌二进制目录（yt-dlp 等），留空 = 程序同级 bin/
+bin_dir = ""
+
+[web]
+host = "127.0.0.1"
+port = 7688                # 被占自动 +1
+allow_lan = false          # true 时强制 token
+
+[ui]
+editor = "vditor"
+
+[ai]
+provider = "openai_compat" # workbuddy / ollama / openai_compat
+auto_fallback = true
+fallback_threshold = 3
+
+[ai.workbuddy]
+# CodeBuddy CLI：留空则自动探测 WorkBuddy 安装目录
+cli_path = ""
+command = ["codebuddy", "-p"]
+extra_args = ["-y", "--output-format", "json", "--tools", ""]
+timeout = 180
+health_timeout = 30
+
+[ai.ollama]
+base_url = "http://127.0.0.1:11434/v1"
+model = "qwen2.5:7b-instruct"
+timeout = 300
+
+[ai.openai_compat]
+# 火山方舟等 OpenAI 兼容端点；API Key 写在 config/secrets.json 的 ark_api_key
+base_url = "https://ark.cn-beijing.volces.com/api/v3"
+model = "doubao-seed-1-6-flash-250828"
+timeout = 180
+
+[ai.embedding]
+model = "bge-m3"
+dim = 1024
+batch_size = 8
+
+[asr]
+engine = "faster-whisper"
+model_size = "small"
+compute = "int8"
+concurrency = 1
+# 本地模型目录（离线加载）；留空则从 HuggingFace 下载
+model_dir = ""
+
+[collect]
+min_chars = 200
+web_timeout = 20
+batch_limit = 100
+# B站 cookie 文件（Netscape 格式或含 SESSDATA 的纯文本），留空 = 不用 cookie
+cookie_file = ""
+
+[duplicate]
+vector_threshold = 0.85
+
+[notify]
+windows_toast = true
+
+[maintain]
+weekly_report = true
+weekly_report_weekday = 6
+weekly_report_hour = 21
+recap_sample = "weighted_unreferenced"

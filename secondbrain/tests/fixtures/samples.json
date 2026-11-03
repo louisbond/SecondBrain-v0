@@ -1,0 +1,84 @@
+{
+  "description": "SecondBrain v0.5.0 固化测试语料 —— 开发期用公开样本，每阶段验收用用户真实链接",
+  "updated": "2026-11-01",
+  "platform_samples": {
+    "bilibili": [
+      {
+        "url": "https://www.bilibili.com/video/BV1GJ411x7h7",
+        "bvid": "BV1GJ411x7h7",
+        "title": "【官方 MV】Never Gonna Give You Up - Rick Astley",
+        "expect": "ok",
+        "note": "公开热门 MV，用于验证 view 接口与无字幕→ASR 降级路径"
+      },
+      {
+        "url": "https://www.bilibili.com/video/BV1xx411c7mD",
+        "bvid": "BV1xx411c7mD",
+        "title": "字幕君交流场所",
+        "expect": "ok",
+        "note": "验证标题/简介抽取"
+      },
+      {
+        "url": "https://www.bilibili.com/video/BV1UT4y1P7CX",
+        "bvid": "BV1UT4y1P7CX",
+        "title": "军训基地",
+        "expect": "ok",
+        "note": "验证 cid 与时长解析"
+      }
+    ],
+    "douyin": [
+      {
+        "url": "https://www.douyin.com/video/7123456789012345678",
+        "expect": "ok_or_manual",
+        "note": "yt-dlp 支持度不稳定；失败时走「简介+ASR+手动粘贴」常态路径"
+      }
+    ],
+    "kuaishou": [
+      {
+        "url": "https://www.kuaishou.com/short-video/3xf8xxxxxxxxxx",
+        "expect": "ok_or_manual",
+        "note": "同上"
+      }
+    ],
+    "xiaohongshu": [
+      {
+        "url": "https://www.xiaohongshu.com/explore/64f0a1b2c3d4e5f600112233",
+        "note_id": "64f0a1b2c3d4e5f600112233",
+        "expect": "ok_or_manual",
+        "note": "反爬时需 cookie；失败走手动粘贴"
+      }
+    ],
+    "web": [
+      {
+        "url": "https://example.com/article",
+        "expect": "ok_or_manual",
+        "note": "通用网页兜底路径：trafilatura → Playwright → 手动"
+      }
+    ]
+  },
+  "paste_samples": [
+    {
+      "name": "b站分享文案混排",
+      "text": "【第一性原理是什么】 https://b23.tv/AbCdEf 复制本条信息，打开B站搜索，直接观看视频！",
+      "expect_count": 1,
+      "expect_platform": "bilibili"
+    },
+    {
+      "name": "四平台混排",
+      "text": "【标题A】 https://www.bilibili.com/video/BV1GJ411x7h7 复制本条信息\nhttps://v.douyin.com/iRabc123/ 复制此链接\nhttps://www.kuaishou.com/short-video/3xf8abc\nhttps://www.xiaohongshu.com/explore/64f0a1b2c3d4e5f600112233",
+      "expect_count": 4,
+      "expect_platforms": ["bilibili", "douyin", "kuaishou", "xiaohongshu"]
+    },
+    {
+      "name": "无链接纯文本",
+      "text": "这段文字里没有任何链接。",
+      "expect_count": 0
+    }
+  ],
+  "asr_samples": [
+    {
+      "url": "https://www.bilibili.com/video/BV1GJ411x7h7",
+      "expect": "asr:true",
+      "note": "无字幕 B站视频 → yt-dlp 抽音频 → faster-whisper 转写"
+    }
+  ]
+}

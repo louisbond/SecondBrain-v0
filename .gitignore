@@ -1,0 +1,21 @@
+# 构建产物
+secondbrain/frontend/dist/
+secondbrain/frontend/node_modules/
+secondbrain/build/
+secondbrain/dist/
+secondbrain/data/
+secondbrain/bin/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 用户真实数据与配置（含密钥，绝不入库）
+secondbrain/config/config.toml
+secondbrain/config/secrets.json
+
+# Edge/浏览器调试残留
+_edge_ux/
+**/Default/
+
+# 本地临时脚本
+secondbrain/scripts/_*.py
