@@ -101,7 +101,13 @@ onUnmounted(() => {
         </div>
         <div class="spacer" style="flex:1"></div>
         <div class="dim mono" style="align-self:center">
-          平均进度 {{ Math.round((stats.avg_progress || 0) * 100) }}%
+          <!-- v31：进度只统计**未完成**的条目（后端已改）。
+               全都完成了显示「已全部完成」，比一个孤零零的 100% 清楚。 -->
+          {{
+            stats.pending
+              ? `进行中进度 ${Math.round((stats.avg_progress || 0) * 100)}%`
+              : (stats.total ? '已全部完成' : '暂无任务')
+          }}
         </div>
         <button class="btn ghost sm" :disabled="loading" @click="load">
           {{ loading ? '刷新中…' : '刷新' }}

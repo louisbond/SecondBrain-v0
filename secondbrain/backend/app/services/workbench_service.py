@@ -11,10 +11,16 @@ from typing import Any
 from app.core.db import get_db
 
 # status → (阶段标签, 进度, 状态色)
+#
+# v31：新增 raw_ready（原文就绪）。
+# 采集区的定位是「经济工具拿原文」——抓完/转写完就停在这儿，
+# **不再自动跑 AI**。所以"原文就绪"是采集链路的**终点**，
+# 进度条到 100%（绿），而不是 45% 一路卡在"run"状态。
 STAGE_MAP: dict[str, tuple[str, float, str]] = {
     "queued": ("排队中", 0.05, "wait"),
     "extracting": ("抓取原文", 0.25, "run"),
     "extracted": ("原文就绪", 0.45, "run"),
+    "raw_ready": ("原文就绪", 1.0, "done"),
     "ai_processing": ("AI 解析中", 0.75, "run"),
     "pending_review": ("待你核准", 1.0, "done"),
     "reviewed": ("已入库", 1.0, "done"),
@@ -23,7 +29,15 @@ STAGE_MAP: dict[str, tuple[str, float, str]] = {
 }
 
 # 阶段序号（用于判断"当前在第几步"）
-STAGE_ORDER = ["queued", "extracting", "extracted", "ai_processing", "pending_review", "reviewed"]
+STAGE_ORDER = [
+    "queued",
+    "extracting",
+    "extracted",
+    "raw_ready",
+    "ai_processing",
+    "pending_review",
+    "reviewed",
+]
 
 
 class WorkbenchService:
@@ -40,6 +54,8 @@ class WorkbenchService:
         # 已转写（asr=1）说明原文阶段真的跑完了
         if status == "extracted" and int(item.get("asr") or 0) == 1:
             label = "转写完成"
+            color = "done"
+            progress = 1.0
 
         job = self._latest_job(int(item["id"]))
         if job is not None:
@@ -108,9 +124,17 @@ class WorkbenchService:
         for st in states:
             counts[st["state"]] = counts.get(st["state"], 0) + 1
 
-        avg_progress = 0.0
-        if states:
-            avg_progress = sum(s["progress"] for s in states) / len(states)
+        # 平均进度**只算未完成的条目**（v31）。
+        #
+        # 坑：早先对**所有**条目求平均 —— 已完成(1.0)和失败(1.0)都算进去。
+        # 于是 5 条里 4 条完成 + 1 条失败时，「平均进度 100%」而「进行中 0」，
+        # 界面自相矛盾（用户反馈"任务进度条太不准"）。
+        # 现在：没有未完成条目时显示 100%（全部搞定），否则只对未完成的求平均。
+        pending = [s for s in states if s["state"] in ("run", "wait")]
+        if pending:
+            avg_progress = sum(s["progress"] for s in pending) / len(pending)
+        else:
+            avg_progress = 1.0 if states else 0.0
 
         return {
             "items": states,
@@ -121,6 +145,8 @@ class WorkbenchService:
                 "fail": counts.get("fail", 0),
                 "wait": counts.get("wait", 0),
                 "avg_progress": round(avg_progress, 3),
+                # 进行中/等待的条目数（前端用来判断"还有活要干吗"）
+                "pending": len(pending),
             },
         }
 

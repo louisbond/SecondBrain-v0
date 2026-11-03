@@ -233,7 +233,18 @@ def _coerce_new_tags(value: Any) -> list[dict[str, str]]:
     return out
 
 
-REQUIRED_FIELDS = ("summary", "tags", "partitions")
+# 只有 summary 是**真正必需**的——没有摘要这条 AI 结果就没意义。
+#
+# tags / partitions 不是必需的：模型可能只给摘要不给分类（尤其是
+# workbuddy/ark 这类链，见过「缺少必需字段：partitions」把整条任务打失败）。
+# 分类是**辅助信息**：用户在加工区可以自己勾选分区和标签，
+# 缺了就当"没建议"，不该让整条任务失败。
+#
+# 坑：早先 REQUIRED_FIELDS = ("summary", "tags", "partitions")，
+# 模型少给一个键 → 整条 ai_failed → 采集任务卡在失败态。
+REQUIRED_FIELDS = ("summary",)
+# 缺失时补空值而不是报错
+OPTIONAL_FIELDS = ("tags", "partitions", "new_tags", "new_partitions", "keywords")
 
 # 模型偶尔把 summary 返回成嵌套对象（如 {"bullets": [...], "one_liner": "..."}），
 # 甚至把要点直接放在顶层。这些都要规整成**文本**，否则 str(dict) 的 Python repr
@@ -304,6 +315,10 @@ def parse_ai_payload(raw: str, expected_type: str) -> tuple[AIResult | None, str
     missing = [f for f in REQUIRED_FIELDS if f not in payload]
     if missing:
         return None, f"缺少必需字段：{', '.join(missing)}"
+
+    # 可选字段缺失 → 补空值（"没建议" ≠ "失败"）
+    for f in OPTIONAL_FIELDS:
+        payload.setdefault(f, [])
 
     result = AIResult(
         ok=True,

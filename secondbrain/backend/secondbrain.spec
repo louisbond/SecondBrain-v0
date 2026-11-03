@@ -79,6 +79,25 @@ example_toml = PROJECT_ROOT / "config" / "config.example.toml"
 if example_toml.exists():
     datas.append((str(example_toml), "config"))
 
+# faster-whisper 的运行时资源（v31 修）
+#
+# 坑：silero VAD 模型（silero_vad_v6.onnx）在源码运行时由
+# faster_whisper 自己定位，但**打包后路径变了** →
+#   ONNXRuntimeError: NO_SUCHFILE: Load model from
+#   _internal/faster_whisper/assets/silero_vad_v6.onnx failed
+# → ASR 在 exe 里**完全不能用**（vad_filter=True 需要它）。
+#
+# 修法：把 assets 目录原样打进包（保持 faster_whisper/ 下的相对路径）。
+try:
+    import faster_whisper
+
+    fw_assets = Path(faster_whisper.__file__).parent / "assets"
+    if fw_assets.exists():
+        datas.append((str(fw_assets), "faster_whisper/assets"))
+        print(f"[spec] 已包含 faster-whisper assets: {fw_assets}")
+except Exception as _exc:  # noqa: BLE001
+    print(f"[spec] 警告：未能定位 faster_whisper assets（{_exc}）")
+
 # jieba 词典：由 pyinstaller-hooks-contrib 的 jieba hook 自动收集。
 # 不要在这里手动加 —— 会和 hook 的目标路径冲突（目录/文件同名导致 COLLECT 失败）。
 

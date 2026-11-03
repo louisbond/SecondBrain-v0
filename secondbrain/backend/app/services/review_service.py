@@ -36,6 +36,9 @@ MANUAL_CONFIRMABLE = {
     "ai_failed",
     "extracted",
     "extract_failed",
+    # v31：采集完成停在「原文就绪」，不进自动 AI。
+    # 用户可以在加工区直接手写摘要入库，也可以点「AI 提取要点」再生成。
+    "raw_ready",
 }
 
 

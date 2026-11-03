@@ -124,7 +124,81 @@ body {
 
 .sidebar-nav {
   padding: 10px 10px;
+  flex: 0 0 auto;
+}
+
+/* ---- 侧边栏状态面板（v31）--------------------------------------------
+   原来侧边栏只有品牌区 + 6 个菜单，下面是整片空白（208px × 全高）。
+   这里把空白填成常驻状态：待核准 / 待补手稿 / 今日采集 / 失败数，
+   点一下直达对应页面。 */
+.sidebar-status {
+  margin: 8px 10px 0;
+  padding: 10px 4px 12px;
+  border-top: 1px solid var(--border);
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sidebar-status-title {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.4px;
+  padding: 0 6px 8px;
+}
+
+.sidebar-stat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 8px;
+  margin-bottom: 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-stat:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.sidebar-stat .k {
+  color: var(--text-dim);
+}
+
+.sidebar-stat:hover .k {
+  color: var(--text-muted);
+}
+
+.sidebar-stat .v {
+  font-family: var(--mono);
+  font-weight: 650;
+  color: var(--text);
+}
+
+.sidebar-stat .v.accent {
+  color: var(--accent);
+}
+
+.sidebar-stat .v.warn {
+  color: var(--warn);
+}
+
+.sidebar-stat .v.danger {
+  color: var(--danger);
+}
+
+.sidebar-foot {
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--border);
+  flex: 0 0 auto;
 }
 
 .nav-item {

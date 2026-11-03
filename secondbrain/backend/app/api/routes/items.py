@@ -91,17 +91,35 @@ async def manual_fill(item_id: int, req: ManualFillRequest) -> dict[str, Any]:
 
 @router.post("/{item_id}/retry")
 async def retry_item(item_id: int) -> dict[str, Any]:
-    """重试失败的条目（extract_failed / ai_failed）。"""
+    """重试失败的条目（extract_failed / ai_failed / raw_ready）。"""
     svc = get_ingest_service()
     item = svc.get_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="条目不存在")
 
     status = item.get("status")
+    extractor = str(item.get("extractor") or "")
     from app.workers.queue import get_queue
 
     queue = get_queue()
-    if status == "extract_failed":
+
+    # v31：**ASR 从没成功过的条目，重试要重跑 extract（那样才会走 ASR）**。
+    #
+    # 坑：这类条目 extractor 带 "+asr_failed" 后缀，正文只有一句简介。
+    # 早先一律按 ai_failed → 重跑 AI，于是 AI 拿着 11 字的简介去摘要 ——
+    # 摘要质量当然差，而且用户看到的还是"没转写"。
+    #
+    # 优先级最高：不管当前是什么状态，只要 ASR 失败过就重跑 extract。
+    # （pending_review 也一样 —— 11 字正文生成的摘要没有意义。）
+    if "asr_failed" in extractor and status in (
+        "ai_failed",
+        "extracted",
+        "raw_ready",
+        "pending_review",
+    ):
+        svc.transition(item_id, "queued")
+        queue.enqueue(item_id, "extract")
+    elif status == "extract_failed":
         svc.transition(item_id, "queued")
         queue.enqueue(item_id, "extract")
     elif status == "ai_failed":
@@ -110,6 +128,11 @@ async def retry_item(item_id: int) -> dict[str, Any]:
     elif status == "pending_review":
         # 用户对摘要/分区/标签不满意 → 重新分析一次
         # （只重跑 AI 阶段，不动 A 层原文，也不写 B 层）
+        svc.transition(item_id, "extracted")
+        queue.enqueue(item_id, "ai")
+    elif status == "raw_ready":
+        # v31：原文就绪（采集完成后不再自动跑 AI）。
+        # 用户点「AI 提取要点」→ 重跑 AI 阶段。
         svc.transition(item_id, "extracted")
         queue.enqueue(item_id, "ai")
     else:

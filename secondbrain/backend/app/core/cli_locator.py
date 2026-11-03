@@ -226,6 +226,12 @@ def write_login_script(info: CLIInfo, port: int | None = None) -> Path:
 
     脚本同时剥离代理环境变量（否则 CLI 内部 setProxy 会崩）并指定空闲端口
     （避开 5452 端口冲突）。
+
+    **为什么脚本里要有中文指引**（v31）：
+    之前脚本除了 echos 全是英文，用户看到的是一个黑窗口 + 英文 TUI，
+    不知道要干什么。CLI 的 TUI 首屏还会显示它自己的快捷键提示
+    （Default: ... / ctrl+alt+f7），用户误以为那是 SecondBrain 的提示。
+    现在开头用中文写清楚「做什么、选哪个、怎么结束」。
     """
     import tempfile
 
@@ -236,10 +242,28 @@ def write_login_script(info: CLIInfo, port: int | None = None) -> Path:
     cli_dir = str(Path(cli_path).parent)
     port = port or pick_free_port()
 
+    # 中文提示用 GBK 写（cmd 默认代码页 936），配合 chcp 936 显示最稳。
+    # 先 chcp 65001 会让 Python 写出的 UTF-8 文本在部分终端花屏。
     lines = [
         "@echo off",
-        "chcp 65001 >nul",
-        "title SecondBrain - CodeBuddy Login",
+        "chcp 936 >nul",
+        "title SecondBrain - WorkBuddy CLI 登录",
+        "color 0B",
+        "echo.",
+        "echo ============================================================",
+        "echo   SecondBrain - WorkBuddy AI 链 登录",
+        "echo ============================================================",
+        "echo.",
+        "echo   下面会打开 WorkBuddy 的命令行界面。",
+        "echo   请选择带 Chinese / 国内 标识的登录方式",
+        "echo   （通常是 \"Log in via Chinese Site\"）。",
+        "echo.",
+        "echo   浏览器会自动打开并完成认证，认证完回到这个窗口即可。",
+        "echo.",
+        "echo   登录完成后按任意键关闭窗口，然后回 SecondBrain 点「刷新」。",
+        "echo.",
+        "echo ============================================================",
+        "echo.",
     ]
     # 剥离会引发端口冲突/代理崩溃的环境变量
     for key in STRIP_ENV:
@@ -251,21 +275,94 @@ def write_login_script(info: CLIInfo, port: int | None = None) -> Path:
         lines.append(f'"{cli_path}" --port {port}')
     lines += [
         "echo.",
-        "echo [SecondBrain] Login finished? Press any key to close this window.",
+        "echo [SecondBrain] 登录完成，按任意键关闭本窗口。",
         "pause >nul",
     ]
 
     text = "\r\n".join(lines) + "\r\n"
+    # 中文行用 GBK 编码；万一路径含 GBK 编不了的字符，退回 UTF-8
+    # （此时脚本首行的 chcp 936 会花屏，但至少能跑完）。
     try:
-        # 纯 ASCII：cmd 在 chcp 生效前读首行，带 BOM 会把首行读成乱码
-        payload = text.encode("ascii")
+        payload = text.encode("gbk")
     except UnicodeEncodeError:
-        # 路径含非 ASCII 时用无 BOM 的 UTF-8（chcp 65001 之后生效）
         payload = text.encode("utf-8")
 
     script = Path(tempfile.gettempdir()) / "secondbrain_cli_login.cmd"
     script.write_bytes(payload)
     return script
+
+
+def open_login_window(script: Path) -> str:
+    """把登录脚本弹成一个**看得懂**的窗口。返回实际用的启动方式。
+
+    **为什么不再用 `os.startfile(script)`**（v31 的坑）：
+    `os.startfile` 走系统文件关联。用户机器上 `.cmd` 被关联到
+    Windows Terminal，于是弹出的是一个**标题为应用目录、内容是 CLI 自己的
+    TUI 快捷键提示（Default: ... / ctrl+alt+f7）的黑窗口**，
+    用户完全不知道这是登录流程，还以为 SecondBrain 弹了个 bug 窗口。
+
+    现在的策略：
+    1. 有 Windows Terminal（wt.exe）→ 用它开一个**带标题的彩色标签页**；
+    2. 没有 → 回退到 conhost（cmd.exe /c start），但明确指定窗口标题；
+    3. 都不行 → 直接跑脚本（会在服务端进程的控制台里，可能不可见）。
+
+    返回值用于日志与前端提示。
+    """
+    import sys
+
+    if sys.platform != "win32":  # pragma: no cover
+        subprocess.Popen(["/bin/sh", str(script)])
+        return "shell"
+
+    # 1) Windows Terminal
+    wt = shutil.which("wt")
+    if wt:
+        try:
+            subprocess.Popen(
+                [
+                    wt,
+                    "-w",
+                    "0",
+                    "new-tab",
+                    "--title",
+                    "SecondBrain - WorkBuddy 登录",
+                    "cmd.exe",
+                    "/k",
+                    str(script),
+                ]
+            )
+            return "windows-terminal"
+        except Exception:  # noqa: BLE001
+            pass
+
+    # 2) conhost：cmd /c start "" /D <dir> cmd /k <script>
+    #    `start` 的第一个引号参数是**窗口标题**（空串表示用默认），
+    #    第二个 /D 是工作目录。
+    try:
+        subprocess.Popen(
+            [
+                "cmd.exe",
+                "/c",
+                "start",
+                '"SecondBrain - WorkBuddy 登录"',
+                "/D",
+                str(script.parent),
+                "cmd.exe",
+                "/k",
+                str(script),
+            ],
+            creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+        )
+        return "conhost"
+    except Exception:  # noqa: BLE001
+        pass
+
+    # 3) 兜底：直接执行（用户可能在服务端自己的终端里）
+    try:
+        subprocess.Popen(["cmd.exe", "/c", str(script)])
+        return "inline"
+    except Exception:  # noqa: BLE001
+        return "failed"
 
 
 def build_env() -> dict[str, str]:

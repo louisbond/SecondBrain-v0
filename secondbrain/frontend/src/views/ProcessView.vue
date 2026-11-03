@@ -63,6 +63,10 @@ const summaryTypeLabel = computed(() => {
   return { bullets: '要点式', structured: '结构化', one_liner: '一句话' }[t] || '要点式'
 })
 
+// v31：采集完成后停在「原文就绪」（raw_ready），没跑过 AI。
+// 这时按钮该叫「AI 提取要点」而不是「重新分析」——语义完全不同。
+const isRawReady = computed(() => current.value?.item?.status === 'raw_ready')
+
 const otherTags = computed(() => {
   const used = new Set([
     ...(current.value?.suggested_tags || []),
@@ -73,7 +77,16 @@ const otherTags = computed(() => {
     .filter((name) => !used.has(name))
 })
 
-// ---------------- 加载 ----------------
+// 队列分组的标题：v31 采集完成后停在「原文就绪」（raw_ready），
+// 那不是「出错需人工处理」，只是**等你来加工**。分开显示。
+const manualTitle = computed(() => {
+  const list = manualQueue.value || []
+  const hasRawReady = list.some((i) => i.status === 'raw_ready')
+  const hasProblem = list.some((i) => i.status !== 'raw_ready')
+  if (hasRawReady && hasProblem) return '待加工与需处理'
+  if (hasRawReady) return '原文就绪，等你加工'
+  return '需人工处理'
+})
 async function loadQueue() {
   loading.value = true
   try {
@@ -142,8 +155,16 @@ async function runParse() {
     parseText.value = r.content || ''
     if (r.ok) {
       toast(`已生成 ${r.chars} 字`, 'success')
+    } else {
+      // 后端返回了业务失败（如「重试 3 次仍不足 800 字」）——
+      // 把原因留在面板上，别只弹一句 toast 就没了。
+      toast('生成失败：' + (r.error || '未知原因'), 'error')
     }
   } catch (e) {
+    // 网络/500 异常：catch 里要把错误**留在面板上**。
+    // 早先这里只弹 toast，parseResult 是 null → 错误区永远不显示，
+    // 用户既看不到失败原因，也没有重试的抓手。
+    parseResult.value = { ok: false, error: e.message || String(e) }
     toast('生成失败：' + e.message, 'error')
   } finally {
     parsingBusy.value = false
@@ -384,7 +405,7 @@ onMounted(async () => {
 
         <template v-if="manualQueue.length">
           <div class="card-title" style="margin-top:14px">
-            <span>✍️</span> 需人工处理
+            <span>✍️</span> {{ manualTitle }}
             <span class="badge warn">{{ manualQueue.length }}</span>
           </div>
           <div class="queue-strip">
@@ -435,10 +456,14 @@ onMounted(async () => {
               <button
                 class="btn ghost sm"
                 :disabled="reanalyzing"
-                :title="'摘要或分区标签不满意时，重新让 AI 分析一次'"
+                :title="isRawReady ? '跑一次 AI 提取要点（生成分区/标签建议）' : '摘要或分区标签不满意时，重新让 AI 分析一次'"
                 @click="reanalyze"
               >
-                {{ reanalyzing ? '重新分析中…' : '重新分析' }}
+                {{
+                  reanalyzing
+                    ? (isRawReady ? '分析中…' : '重新分析中…')
+                    : (isRawReady ? 'AI 提取要点' : '重新分析')
+                }}
               </button>
               <button class="btn ghost sm" @click="skip">跳过本条</button>
             </div>
@@ -471,7 +496,7 @@ onMounted(async () => {
                   <option v-for="c in charPresets" :key="c" :value="c">{{ c }} 字</option>
                 </select>
                 <button class="btn primary" :disabled="parsingBusy" @click="runParse">
-                  {{ parsingBusy ? '生成中…' : 'AI 生成解析结果' }}
+                  {{ parsingBusy ? '生成中…' : (parseResult && !parseResult.ok ? '重新生成' : 'AI 生成解析结果') }}
                 </button>
                 <button v-if="parseText" class="btn ghost" @click="sendToOriginal">
                   送去原创区 →

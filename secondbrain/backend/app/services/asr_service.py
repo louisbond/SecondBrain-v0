@@ -23,6 +23,43 @@ from typing import Any
 
 from app.core.config import get_config
 
+# 常用繁体字（用于检测转写质量，不做转换——转换用 whisper 的提示词解决）。
+# 只取高频的一批，够判断"是不是简体"即可。
+_TRAD_CHARS = frozenset(
+    "這來個們為說時會對開關無問點長東車馬鳥魚龍龜書畫聽見觀語讀寫學"
+    "電腦網軟硬機系統記憶頻寬螢幕滑鼠標籤紙張邊緣體係結構設計劃執行程"
+    "式應用發現實際題標準備認證據點擊選輸適還邊過運遠連進遲間聞閱防際"
+    "陸陳陰陽隊階隨雖雙雜雞離難雲電靈靜韓響頁項順須預領頭顏願類顧風飛"
+    "餓馬鮮鳳鴨鵝鷹鹽麗麥黃黨齊齒買賣價錢銀鐘長難離實發現樣種積節範"
+    "體屬歲層級並儘隻髮鬥醜鐘藉捲嘗鹹瞭臺線纖繡續脅臘舉艙蘇藥蟲襯"
+    "覺觀訂計訊記訪設許訴診註詞試詩話該詳誠語誤誰課調談請論諸講謝識"
+    "議護讀變讓豐貝負財責貨質購賽贈贊贏趕較輕載輛輸轉農適還邊過運遠"
+    "連進遲間聞閱防際陸陳陰陽隊階隨雖雙雜雞離難雲電靈靜韓響頁項順須"
+    "預領頭顏願類顧風飛餓馬鮮鳳鴨鵝鷹鹽麗麥黃黨齊齒國區縣鎮鄉萬億歷"
+    "層級業產經濟漁資訊獎勵勸勝敗歲歸舊禮種積節簡約細組織統線級習聞"
+    "職聯腦臺蘇蘭號藝蘭蟲衛覺觀議護譯豐賓質賣購贏贖趨躍踐軟輕較載"
+    "繁體髮髒幾點餘隻衝壓歲齒龜"
+)
+
+
+def trad_ratio(text: str) -> float:
+    """文本里繁体字占中文汉字的比例（0.0–1.0）。
+
+    用途：**质量提示**，不是转换。
+    v31 实测：官方提示词下 tiny 模型约 2%，换 small 模型会明显更低。
+    比例偏高说明该换更大的 ASR 模型了。
+    """
+    if not text:
+        return 0.0
+    han = 0
+    trad = 0
+    for ch in text:
+        if "一" <= ch <= "鿿":
+            han += 1
+            if ch in _TRAD_CHARS:
+                trad += 1
+    return trad / han if han else 0.0
+
 
 @dataclass
 class ASRResult:
@@ -32,6 +69,9 @@ class ASRResult:
     error: str | None = None
     model: str = ""
     elapsed_ms: int = 0
+    # 繁体字占比（0.0–1.0）。用于提示转写质量：
+    # 数值偏高说明模型能力不够（tiny），该换更大的模型。
+    trad_ratio: float = 0.0
 
 
 class ASRService:
@@ -231,6 +271,50 @@ class ASRService:
                 self._model_error = str(exc)
             return self._model
 
+    # ASR 提示词：官方推荐的简体写法（v31 实测）
+    #
+    # whisper 会**模仿提示词的字形**。实测同一段音频：
+    #   无提示              → 繁体率 17.5%
+    #   "以下是普通话的句子。" → 繁体率 1.9%
+    #
+    # 坑：早先写的是一句长提示（"以下是普通话视频的字幕内容，请用简体中文
+    # 输出，保留专有名词。"），效果反而不如这句短的 —— 提示词太长会被
+    # 当成待转写内容的一部分。
+    _ZH_PROMPT = "以下是普通话的句子。"
+
+    # 长音频分段转写：每段多少秒
+    # （长上下文会漂移：模型一路听下去，后面的段落又开始输出繁体，
+    #   而且会一路错下去 —— "插件"→"插线"、"流程"→"交程"。分段能治这个。）
+    _CHUNK_SECONDS = 30.0
+
+    def _transcribe_segments(self, model: Any, audio_path: str) -> list[str]:
+        """转写并返回文本行列表。
+
+        **为什么用官方的短提示词**（v31 实测）：
+        whisper 会**模仿提示词的字形**。同一段音频的繁体率：
+            无提示                   → 17.5%
+            "以下是普通话的句子。"     → 1.9%
+        坑：早先写的是一句长提示（"以下是普通话视频的字幕内容，请用简体中文
+        输出，保留专有名词。"），效果反而不如这句短的 —— 提示词太长会被
+        当成待转写内容的一部分。
+
+        **为什么不分段**：试过按静音点切成 30s 块逐块重转（v31），
+        繁体率没降（1.9% → 2.3%），耗时还涨了 40%（28s → 40s）。
+        残留的繁体**不是上下文漂移**，是 tiny 模型的能力上限 ——
+        那些是真错字（"插件"→"插线"、"界面"→"居面"）。
+        根治靠**换更大的模型**（config.toml 的 model_size / model_dir），
+        不靠切段。
+        """
+        segments, info = model.transcribe(
+            audio_path,
+            language="zh",
+            vad_filter=True,
+            beam_size=5,
+            initial_prompt=self._ZH_PROMPT,
+            condition_on_previous_text=False,
+        )
+        return [s.text.strip() for s in segments if (s.text or "").strip()]
+
     def transcribe_file(self, audio_path: str) -> ASRResult:
         """转写本地音频。"""
         import time
@@ -245,17 +329,7 @@ class ASRService:
             )
 
         try:
-            segments, info = model.transcribe(
-                audio_path,
-                language="zh",
-                vad_filter=True,
-                beam_size=5,
-            )
-            lines: list[str] = []
-            for seg in segments:
-                text = (seg.text or "").strip()
-                if text:
-                    lines.append(text)
+            lines = self._transcribe_segments(model, audio_path)
             body = "\n".join(lines)
             # 空转写**不能算成功**——否则下游 AI 拿到 0 字正文，
             # 报一个看不懂的 empty_content。纯音乐/无人声视频就是这样。
@@ -277,6 +351,7 @@ class ASRService:
                 audio_path=audio_path,
                 model=self.cfg.asr.model_size,
                 elapsed_ms=int((time.time() - started) * 1000),
+                trad_ratio=trad_ratio(body),
             )
         except Exception as exc:  # noqa: BLE001
             return ASRResult(

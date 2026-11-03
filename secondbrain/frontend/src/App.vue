@@ -5,10 +5,11 @@
  * 顶栏在 LAN 开启时显示实际端口提示（§3.1：被占自动顺延并在 UI 顶部提示）。
  */
 import { ref, onMounted, onUnmounted, computed, provide, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { healthApi, collectApi, reviewApi } from './api/client'
 
 const route = useRoute()
+const router = useRouter()
 const health = ref(null)
 const stats = ref({})
 const pendingCount = ref(0)
@@ -35,6 +36,11 @@ const portNotice = computed(() => {
 })
 
 const searchModeWarning = computed(() => health.value?.search_mode_warning)
+
+/** 侧边栏状态面板的跳转（点计数直达对应页面）。 */
+function go(path) {
+  if (route.path !== path) router.push(path)
+}
 
 async function refresh() {
   try {
@@ -150,6 +156,55 @@ onUnmounted(() => {
           >{{ pendingCount }}</span>
         </RouterLink>
       </nav>
+
+      <!--
+        v31：侧边栏状态面板。
+        原来侧边栏只有品牌区 + 6 个菜单，下面是整片空白（208px × 全高）。
+        把空白填成**有用的常驻信息**：待核准 / 待补手稿 / 今日采集 / 失败数，
+        点一下直接跳到对应页面 —— 不用先切页面再找。
+      -->
+      <div class="sidebar-status">
+        <div class="sidebar-status-title">本机状态</div>
+
+        <button
+          class="sidebar-stat"
+          @click="go('/process')"
+        >
+          <span class="k">待核准</span>
+          <span class="v" :class="{ accent: stats.pending_review > 0 }">
+            {{ stats.pending_review || 0 }}
+          </span>
+        </button>
+        <button
+          class="sidebar-stat"
+          @click="go('/')"
+        >
+          <span class="k">待补手稿</span>
+          <span class="v" :class="{ warn: stats.need_manuscript > 0 }">
+            {{ stats.need_manuscript || 0 }}
+          </span>
+        </button>
+        <button class="sidebar-stat" @click="go('/workbench')">
+          <span class="k">今日采集</span>
+          <span class="v">{{ stats.today || 0 }}</span>
+        </button>
+        <button
+          class="sidebar-stat"
+          @click="go('/status')"
+        >
+          <span class="k">解析失败</span>
+          <span class="v" :class="{ danger: (stats.by_status?.ai_failed || 0) > 0 }">
+            {{ stats.by_status?.ai_failed || 0 }}
+          </span>
+        </button>
+      </div>
+
+      <div class="sidebar-foot">
+        <div class="dim" style="font-size:11px;line-height:1.6">
+          共 {{ stats.total || 0 }} 条素材<br />
+          本周 {{ stats.week || 0 }} 条
+        </div>
+      </div>
     </aside>
 
     <div class="main-area">

@@ -38,6 +38,7 @@ const loading = ref(false)
 const current = ref(null)
 const content = ref(null)
 const loadingContent = ref(false)
+const retrying = ref(false)
 
 // ---------------- 解析 ----------------
 
@@ -99,6 +100,38 @@ async function pickTask(item) {
   await selectItem(item.id)
 }
 
+/** 当前任务能不能重试。 */
+const canRetry = computed(() => {
+  const s = current.value?.status
+  return s === 'extract_failed' || s === 'ai_failed' || s === 'raw_ready'
+})
+
+/**
+ * 重试当前任务（v31：采集区直接重试，不用跳去状态页）。
+ *
+ * 后端 /api/items/{id}/retry 会按状态决定重跑哪一段：
+ *   extract_failed → 重跑抓取
+ *   ai_failed       → 重跑 AI
+ *   raw_ready       → 重跑 AI（原文就绪，等你点 AI 提取要点）
+ */
+async function retryCurrent() {
+  if (!current.value || retrying.value) return
+  retrying.value = true
+  try {
+    await itemsApi.retry(current.value.id)
+    toast('已重新提交，稍等片刻…', 'success')
+    // 状态条是轮询的，等一轮让它自己刷新
+    await new Promise((r) => setTimeout(r, 1500))
+    await loadStatus()
+    const fresh = states.value.find((s) => s.id === current.value.id)
+    if (fresh) current.value = fresh
+  } catch (e) {
+    toast('重试失败：' + e.message, 'error')
+  } finally {
+    retrying.value = false
+  }
+}
+
 async function selectItem(id) {
   current.value = states.value.find((s) => s.id === id) || null
   loadingContent.value = true
@@ -116,17 +149,24 @@ async function selectItem(id) {
 }
 
 // ---------------- 采集 ----------------
+
+/** 只解析，不提交（保留给「先看看抓到了什么」的场合）。 */
 async function doParse() {
   if (!rawText.value.trim()) {
     toast('请先粘贴分享文案或链接', 'warn')
-    return
+    return false
   }
   parsing.value = true
   try {
     parsed.value = await collectApi.parse(rawText.value)
-    if (!parsed.value.count) toast('没有解析到任何链接，请检查粘贴内容', 'warn')
+    if (!parsed.value.count) {
+      toast('没有解析到任何链接，请检查粘贴内容', 'warn')
+      return false
+    }
+    return true
   } catch (e) {
     toast('解析失败：' + e.message, 'error')
+    return false
   } finally {
     parsing.value = false
   }
@@ -160,7 +200,7 @@ async function doSubmit() {
       }))
     })
     const skipped = (res && res.skipped) || []
-    const msg = `已入库 ${validItems.value.length} 条，正在后台解析`
+    const msg = `已入库 ${validItems.value.length} 条，正在后台抓取原文`
     toast(
       skipped.length ? `${msg}（跳过 ${skipped.length} 条无链接）` : msg,
       'success'
@@ -173,6 +213,20 @@ async function doSubmit() {
   } finally {
     submitting.value = false
   }
+}
+
+/**
+ * 一键「解析并入库」（v31：合并原来的两步）。
+ *
+ * 流程：解析 → 立刻提交。
+ * 解析失败就停在这一步，textarea 内容保留，用户改完再点一次即可 ——
+ * 不需要"先点解析、再点入库"两个来回。
+ */
+async function parseAndSubmit() {
+  if (submitting.value) return
+  const ok = await doParse()
+  if (!ok) return
+  await doSubmit()
 }
 
 async function doQuickNote() {
@@ -269,7 +323,7 @@ onUnmounted(() => {
           <div class="card-title">
             <span>⇪</span> 采集
             <span class="dim" style="font-weight:400;font-size:11.5px">
-              经济工具拿原文 · 处理完自动送加工区做 AI 深度总结
+              经济工具拿原文 · 抓完停在「原文就绪」，AI 加工到加工区做
             </span>
             <div class="spacer" style="flex:1"></div>
             <button class="btn ghost sm" @click="showQuickNote = !showQuickNote">速记</button>
@@ -292,15 +346,25 @@ onUnmounted(() => {
             placeholder="把分享文案整段粘进来（链接 / 标题 / 简介一起），自动识别平台"
           ></textarea>
           <div class="row" style="margin-top:8px">
-            <button class="btn" :disabled="parsing" @click="doParse">
-              {{ parsing ? '解析中…' : '智能解析' }}
-            </button>
+            <!--
+              v31：合并「智能解析」+「入库」为一个动作。
+              解析只是预览，用户拿到的最终结果都是"提交入库"，
+              分两步点等于让人多点一次、还得多想一次"我现在到哪一步了"。
+              现在一键：解析 → 立即提交。
+              解析结果仍然展示在下方（能看清抓到了什么、有没有重复）。
+            -->
             <button
               class="btn primary"
-              :disabled="submitting || !validItems.length"
-              @click="doSubmit"
+              :disabled="parsing || submitting || !rawText.trim()"
+              @click="parseAndSubmit"
             >
-              入库（{{ validItems.length }}）
+              {{
+                parsing
+                  ? '解析中…'
+                  : submitting
+                    ? '入库中…'
+                    : '解析并入库'
+              }}
             </button>
             <div class="spacer" style="flex:1"></div>
             <button
@@ -313,6 +377,9 @@ onUnmounted(() => {
           </div>
 
           <div v-if="parsed" style="margin-top:10px">
+            <div class="dim" style="font-size:11.5px;margin-bottom:6px">
+              识别到 {{ parsed.count }} 条{{ submitting ? '，正在入库…' : '' }}
+            </div>
             <div
               v-for="(it, i) in items"
               :key="i"
@@ -358,6 +425,20 @@ onUnmounted(() => {
               <span class="badge" :class="stateClass(current.state)">
                 {{ current.stage }}
               </span>
+              <!--
+                v31：失败任务在采集区**直接重试**，不用跳去状态页。
+                用户反馈「采集区解析失败后竟不支持重新解析」——
+                这里原来只有状态标签，没有任何可点的动作。
+              -->
+              <button
+                v-if="current.state === 'fail' || canRetry"
+                class="btn ghost sm"
+                style="margin-left:8px"
+                :disabled="retrying"
+                @click="retryCurrent"
+              >
+                {{ retrying ? '重试中…' : '重试' }}
+              </button>
             </div>
             <div style="font-size:15px;font-weight:600;margin-bottom:4px">
               {{ current.title }}
@@ -366,11 +447,16 @@ onUnmounted(() => {
               {{ current.source_url || '速记' }} · 原文 {{ current.raw_len }} 字
             </div>
 
+            <!-- 失败原因（原来只在状态页能看到，这里补上） -->
+            <div v-if="current.error_detail" class="alert warn" style="margin-top:10px">
+              {{ current.error_detail }}
+            </div>
+
             <!-- 解析生成已归入「加工区」 -->
             <div class="alert info" style="margin-top:12px">
-              要按模板生成解析结果？去
+              要按模板生成解析结果（可选字数档位，≥800 字）？去
               <a href="/process">加工区 →</a>
-              （那里可选模板与字数档位，生成后能直接当创作底稿）。
+              。也可以直接点上面的「重试」跑一次 AI 提取要点。
             </div>
           </div>
 

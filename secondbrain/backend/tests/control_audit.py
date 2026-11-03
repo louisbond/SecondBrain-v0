@@ -306,58 +306,63 @@ async def main(base: str) -> int:
             })()"""
         )
         await asyncio.sleep(0.5)
-        await b.click_text(".content .btn", "智能解析")
-        await asyncio.sleep(1.8)
 
-        before = await b.eval(
+        # v31：采集区把「智能解析」+「入库」合并成一个「解析并入库」按钮。
+        # 审计要跟着改：点一次就该走完 parse → submit 全链路。
+        clicked = await b.click_text(".content .btn", "解析并入库")
+        check(
+            "采集区有「解析并入库」合并按钮",
+            bool(clicked),
+            "没找到合并后的按钮（应只有一步操作）",
+        )
+        await asyncio.sleep(3.0)
+
+        reqs = await b.eval("window.__sbSubmit || []")
+        if not reqs:
+            check("采集区入库发出了请求", False, "没有发出 /api/collect/submit")
+        else:
+            rq = reqs[-1]
+            try:
+                payload = json.loads(rq["body"] or "{}")
+            except Exception:
+                payload = {}
+            ent = payload.get("entries")
+            check(
+                "采集区入库请求体格式正确（entries 是数组）",
+                isinstance(ent, list),
+                f"entries 类型={type(ent).__name__}；body={str(rq['body'])[:120]}",
+            )
+            check(
+                "采集区入库返回 2xx",
+                200 <= int(rq["status"]) < 300,
+                f"HTTP {rq['status']}：{str(rq['resp'])[:150]}",
+            )
+
+        # 采集区不该再有独立的「入库（N）」按钮（v31 合并掉了）
+        leftover = await b.eval(
+            """(() => [...document.querySelectorAll('.content .btn')]
+                 .map(b => b.innerText.trim())
+                 .filter(t => /^入库（/.test(t)))()"""
+        )
+        check(
+            "采集区没有残留的独立「入库（N）」按钮",
+            not leftover,
+            f"仍存在 {leftover}",
+        )
+
+        # 入库后队列里应多出一条任务
+        queued = await b.eval(
             """(() => {
               const t = document.querySelector('.content')?.innerText || '';
-              const m = t.match(/入库（(\\d+)）/);
-              return m ? Number(m[1]) : 0;
+              const m = t.match(/共\\s*(\\d+)\\s*条/);
+              return m ? Number(m[1]) : -1;
             })()"""
         )
-        if not before:
-            check("采集区解析出可入库条目", False, "解析后「入库（N）」仍是 0")
-        else:
-            check("采集区解析出可入库条目", True, f"入库（{before}）")
-            b.page_errors.clear()
-            b.console_errors.clear()
-            await b.click_text(".content .btn", "入库")
-            await asyncio.sleep(2.5)
-
-            reqs = await b.eval("window.__sbSubmit || []")
-            if not reqs:
-                check("采集区入库发出了请求", False, "没有发出 /api/collect/submit")
-            else:
-                rq = reqs[-1]
-                try:
-                    payload = json.loads(rq["body"] or "{}")
-                except Exception:
-                    payload = {}
-                ent = payload.get("entries")
-                check(
-                    "采集区入库请求体格式正确（entries 是数组）",
-                    isinstance(ent, list),
-                    f"entries 类型={type(ent).__name__}；body={str(rq['body'])[:120]}",
-                )
-                check(
-                    "采集区入库返回 2xx",
-                    200 <= int(rq["status"]) < 300,
-                    f"HTTP {rq['status']}：{str(rq['resp'])[:150]}",
-                )
-                # 入库后队列里应多出一条任务
-                queued = await b.eval(
-                    """(() => {
-                      const t = document.querySelector('.content')?.innerText || '';
-                      const m = t.match(/共\\s*(\\d+)\\s*条/);
-                      return m ? Number(m[1]) : -1;
-                    })()"""
-                )
-                check(
-                    "采集区入库后队列出现新任务",
-                    queued > 0,
-                    f"任务状态「共 N 条」= {queued}",
-                )
+        check(
+            "采集区入库后队列出现新任务",
+            queued > 0,
+            f"任务状态「共 N 条」= {queued}",
+        )
 
     print("\n" + "=" * 60)
     print(f"通过 {len(PASS)} 项，失败 {len(FAIL)} 项")

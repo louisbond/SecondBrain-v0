@@ -132,7 +132,34 @@ def handle_extract(item_id: int) -> None:
         inbox_path=path.as_posix(),
     )
     ingest.transition(item_id, "extracted")
-    _enqueue(item_id, "ai")
+    # v31：不再自动排 ai job。
+    # 采集区的定位是「经济工具拿原文」——抓取/转写完就交差。
+    # AI 提取要点是**加工区**的活：要选模板、要指定字数档位（≥800 字）、
+    # 要用户确认分区标签。放在采集阶段自动跑，会出现用户吐槽的
+    # 「任务完成后突然开始 AI 提取要点，还没按 800 字要求」。
+    _mark_raw_ready(item_id)
+
+
+def _mark_raw_ready(item_id: int) -> None:
+    """原文就绪：不再往下自动跑 AI，等用户在加工区触发。
+
+    **坑**：`ingest.transition()` 会把 error_reason 清成 None（默认值）。
+    所以这里**必须把已有的错误原因带过去** —— 否则 ASR 失败的原因
+    （"这段音频没有人声"之类）在转场时就被抹掉了，界面上只看到
+    「原文就绪」，用户完全不知道之前发生了什么。
+    """
+    ingest = get_ingest_service()
+    item = ingest.get_item(item_id) or {}
+    try:
+        ingest.transition(
+            item_id,
+            "raw_ready",
+            error_reason=item.get("error_reason"),
+            error_detail=item.get("error_detail"),
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    _progress(item_id, 0.5)
 
 
 def handle_asr(item_id: int) -> None:
@@ -163,7 +190,9 @@ def handle_asr(item_id: int) -> None:
             error_reason="asr_failed",
             error_detail=(result.error or "ASR 转写失败")[:500],
         )
-        _enqueue(item_id, "ai")
+        # v31：不自动跑 AI（AI 加工是加工区的活）。
+        # 转写失败也停在「原文就绪」——用户可以在加工区重试转写或手工补正文。
+        _mark_raw_ready(item_id)
         return
 
     # 文本写回 A 层 md（asr: true）
@@ -174,7 +203,7 @@ def handle_asr(item_id: int) -> None:
             error_reason="asr_empty",
             error_detail="转写结果为空，未覆盖原有正文",
         )
-        _enqueue(item_id, "ai")
+        _mark_raw_ready(item_id)
         return
 
     inbox_path = item.get("inbox_path")
@@ -204,7 +233,8 @@ def handle_asr(item_id: int) -> None:
         asr=True,
     )
     _notify_asr_done(str(item.get("title") or ""))
-    _enqueue(item_id, "ai")
+    # v31：转写完成 → 原文就绪，不自动跑 AI。
+    _mark_raw_ready(item_id)
 
 
 def handle_ai(item_id: int) -> None:

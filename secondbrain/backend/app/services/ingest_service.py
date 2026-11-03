@@ -35,11 +35,28 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
     # queued 也允许直达 extracted（用户手动提供内容时）
     "queued": {"extracting", "extract_failed", "extracted", "cancelled"},
     "extracting": {"extracted", "extract_failed"},
-    "extracted": {"ai_processing", "ai_failed"},
+    # v31：采集完成后**不再自动排 AI job**（AI 加工是加工区的活，
+    # 要模板/字数档位/用户确认）。原文就绪 → 待用户触发 AI。
+    "extracted": {"ai_processing", "ai_failed", "raw_ready"},
+    "raw_ready": {
+        "ai_processing",
+        "pending_review",
+        "ai_failed",
+        "extracting",
+        # 重试路径：raw_ready → extracted → ai_processing
+        # （retry 接口先回 extracted 再排 ai job）
+        "extracted",
+    },
     "extract_failed": {"extracted", "queued", "cancelled"},
     "ai_processing": {"pending_review", "ai_failed"},
     "ai_failed": {"ai_processing", "queued"},
-    "pending_review": {"reviewed", "pending_review"},
+    "pending_review": {
+        "reviewed",
+        "pending_review",
+        # v31：ASR 失败过的条目点「重试」要能回队列重跑抓取+转写
+        # （正文只有一句简介时，pending_review 的摘要是没意义的）。
+        "queued",
+    },
     "reviewed": {"archived"},
     "archived": {"pending_review"},
 }
@@ -48,6 +65,7 @@ STATUS_LABELS: dict[str, str] = {
     "queued": "排队中",
     "extracting": "抓取中",
     "extracted": "已抓取",
+    "raw_ready": "原文就绪",
     "extract_failed": "抓取失败",
     "ai_processing": "AI 处理中",
     "ai_failed": "AI 失败",

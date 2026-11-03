@@ -1370,12 +1370,32 @@ class TestProviderConfig:
         assert exc.rate_limited is False
         assert exc.quota is False
 
-    def test_parse_missing_fields_fails(self):
+    def test_parse_missing_optional_fields_ok(self):
+        """v31：只有 summary 是必需的。
+
+        回归背景：REQUIRED_FIELDS 曾经是 ("summary", "tags", "partitions")，
+        模型少给一个键 → 整条 ai_failed（workbuddy 链上真发生过：
+        「AI 契约调用失败（3 次尝试）：缺少必需字段：partitions」）。
+        分区/标签是**辅助建议**，用户能在加工区自己勾选，
+        缺了就当"没建议"，不该让整条任务失败。
+        """
         from app.providers.ai_service import parse_ai_payload
 
         result, error = parse_ai_payload('{"summary": "x"}', "bullets")
+        assert error is None, error
+        assert result is not None
+        assert result.summary == "x"
+        # 缺失的可选字段补空值
+        assert result.tags == []
+        assert result.partitions == []
+
+    def test_parse_missing_summary_fails(self):
+        """summary 是唯一必需字段——没有摘要这条 AI 结果就没意义。"""
+        from app.providers.ai_service import parse_ai_payload
+
+        result, error = parse_ai_payload('{"tags": ["x"]}', "bullets")
         assert result is None
-        assert "tags" in error or "partitions" in error
+        assert error and "summary" in error
 
     def test_detect_content_type(self):
         from app.providers.ai_service import detect_content_type
@@ -1935,7 +1955,17 @@ class TestASREmptyResult:
         svc = get_asr_service()
 
         class FakeModel:
-            def transcribe(self, path, language=None, vad_filter=True, beam_size=5):
+            # v31：转写现在会传 initial_prompt / condition_on_previous_text
+            # （治 whisper 输出繁体），签名要能收下。
+            def transcribe(
+                self,
+                path,
+                language=None,
+                vad_filter=True,
+                beam_size=5,
+                initial_prompt=None,
+                condition_on_previous_text=None,
+            ):
                 class Seg:
                     text = ""
                 return iter([Seg()]), object()
@@ -1993,7 +2023,11 @@ class TestASREmptyResult:
         item = ingest.get_item(item_id)
         assert "原有正文内容" in (item.get("raw_text") or ""), "正文被覆盖了"
         assert item.get("error_reason") == "asr_failed"
-        assert "ai" in enqueued, "ASR 失败后仍要进 AI"
+        # v31：ASR 失败后**不再自动排 ai job**。
+        # AI 加工是加工区的活（要模板/字数档位/用户确认），
+        # 采集链路的终点是「原文就绪」。
+        assert "ai" not in enqueued, "ASR 失败后不应自动跑 AI"
+        assert item.get("status") == "raw_ready", item.get("status")
 
 
 class TestProcessedPath:
@@ -2239,3 +2273,130 @@ class TestManuscriptFill:
         svc.fill_manuscript(note_path, "顶层手稿字段")
         note2 = svc.get_note(note_path)
         assert note2["manuscript"] == "顶层手稿字段", note2["manuscript"]
+
+
+class TestCollectStopsAtRawReady:
+    """v31：采集完成后停在「原文就绪」，不自动跑 AI。
+
+    回归背景：用户吐槽「采集区的任务进度条太不准了，完成任务后
+    竟然直接 AI 提取要点加工了（也没有按 800 字要求）」。
+
+    采集区的定位是「经济工具拿原文」——抓取/转写完就交差。
+    AI 提取要点是**加工区**的活：要模板、要字数档位、要用户确认分区标签。
+    放在采集阶段自动跑，会跳出用户没要求的加工动作。
+    """
+
+    def _submit_item(self, title: str = "采集链路测试") -> int:
+        from app.services.ingest_service import get_ingest_service
+
+        ingest = get_ingest_service()
+        res = ingest.submit(
+            [{"url": f"https://example.com/raw-ready-{title}", "platform": "web", "title": title}]
+        )
+        return res.accepted[0]["id"]
+
+    def test_extract_does_not_enqueue_ai(self, monkeypatch):
+        """抓取完成 → raw_ready，且**不排 ai job**。"""
+        import app.workers.pipeline as pipeline_mod
+        from app.services.ingest_service import get_ingest_service
+
+        ingest = get_ingest_service()
+        item_id = self._submit_item()
+
+        enqueued: list[str] = []
+        monkeypatch.setattr(
+            pipeline_mod, "_enqueue", lambda iid, kind, priority=5: enqueued.append(kind)
+        )
+
+        # 模拟抓取完成：extracted → raw_ready
+        ingest.transition(item_id, "extracted")
+        pipeline_mod._mark_raw_ready(item_id)
+
+        item = ingest.get_item(item_id)
+        assert item["status"] == "raw_ready", item["status"]
+        assert "ai" not in enqueued
+
+    def test_raw_ready_is_manually_confirmable(self):
+        """raw_ready 的条目要能进加工区（用户手写摘要直接入库）。"""
+        from app.services.ingest_service import get_ingest_service
+        from app.services.review_service import get_review_service
+
+        ingest = get_ingest_service()
+        item_id = self._submit_item("加工区可见")
+        ingest.update_item(item_id, raw_text="正文")
+        ingest.transition(item_id, "extracted")
+
+        import app.workers.pipeline as pipeline_mod
+
+        pipeline_mod._mark_raw_ready(item_id)
+
+        manual = get_review_service().list_manual()
+        assert any(m["id"] == item_id for m in manual), manual
+
+    def test_retry_raw_ready_triggers_ai(self):
+        """raw_ready 的条目点「重新分析」要能排上 ai job。"""
+        from app.services.ingest_service import get_ingest_service
+
+        ingest = get_ingest_service()
+        item_id = self._submit_item("重试触发")
+        ingest.update_item(item_id, raw_text="正文")
+        ingest.transition(item_id, "extracted")
+
+        import app.workers.pipeline as pipeline_mod
+
+        pipeline_mod._mark_raw_ready(item_id)
+
+        # 状态机允许 raw_ready → extracted（retry 走这条路）
+        ok = ingest.transition(item_id, "extracted")
+        assert ok is True, "raw_ready 应该能回到 extracted 以便重试 AI"
+
+
+class TestASRSimplifiedOutput:
+    """v31：ASR 必须输出简体（用户反馈「没自动根据音频转写」）。
+
+    回归背景：faster-whisper 的 tiny 模型在中文上默认输出**繁体**
+    （"這是第二大腦和負席計畫"），整篇看着像乱码。
+
+    根因与解法：whisper 会**模仿 initial_prompt 的字形**。
+    实测同一段音频的繁体率：
+        无提示                   → 17.5%
+        "以下是普通话的句子。"     → 1.9%
+    官方这句短提示词效果最好；早先写的长提示（"以下是普通话视频的字幕内容…"）
+    反而不如它 —— 提示词太长会被当成待转写内容的一部分。
+    """
+
+    def test_zh_prompt_is_official_short_form(self):
+        from app.services.asr_service import ASRService
+
+        assert ASRService._ZH_PROMPT == "以下是普通话的句子。"
+
+    def test_transcribe_uses_zh_prompt(self, monkeypatch):
+        """转写时必须带上简体提示词。"""
+        from app.services.asr_service import get_asr_service
+
+        svc = get_asr_service()
+        captured: dict = {}
+
+        class FakeModel:
+            def transcribe(self, path, **kw):
+                captured.update(kw)
+
+                class Seg:
+                    text = "大家好"
+
+                return iter([Seg()]), object()
+
+        monkeypatch.setattr(svc, "_load_model", lambda: FakeModel())
+        svc.transcribe_file("fake.m4a")
+
+        assert captured.get("initial_prompt") == "以下是普通话的句子。"
+        assert captured.get("language") == "zh"
+
+    def test_trad_ratio_detects_traditional(self):
+        from app.services.asr_service import trad_ratio
+
+        assert trad_ratio("这是简体中文") == 0.0
+        assert trad_ratio("") == 0.0
+        assert trad_ratio("這是繁體字") > 0.5
+        # 中英混排时只按汉字算
+        assert trad_ratio("hello world") == 0.0
