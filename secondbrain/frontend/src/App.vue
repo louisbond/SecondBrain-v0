@@ -28,8 +28,8 @@ const navItems = [
   { to: '/workbench', icon: '⇪', label: '采集区' },
   { to: '/process', icon: '✓', label: '加工区' },
   { to: '/original', icon: '✎', label: '原创区' },
-  // v37：设置并入管理区（用户：管理区和设置合并），一级导航从 6 项减到 5 项
-  { to: '/manage', icon: '⚙', label: '管理设置' }
+  // v37：设置并入管理区；v38 用户要求导航就叫「设置」（两页已是一页）
+  { to: '/manage', icon: '⚙', label: '设置' }
 ]
 
 const portNotice = computed(() => {

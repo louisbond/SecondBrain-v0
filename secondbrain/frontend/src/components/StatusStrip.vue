@@ -39,7 +39,14 @@ const props = defineProps({
    * 采集区有 4 行、加工区只有 2 行，不设这个两条带子高度会差 50px 左右，
    * 切页面时内容会跳。传同一个值就齐了。
    */
-  minHeight: { type: Number, default: 0 }
+  minHeight: { type: Number, default: 0 },
+  /**
+   * 紧凑形态（v38，加工队列用）。
+   *
+   * 加工区只有 2 行，按采集区那套 195px 铺开会显得"两条消息飘在一大片空里"。
+   * dense 收掉上下留白、行间距，高度降到 ~100px。
+   */
+  dense: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['select'])
@@ -139,7 +146,7 @@ onUnmounted(() => {
 <template>
   <div
     class="status-strip"
-    :class="{ 'strip-even': !!groups }"
+    :class="{ 'strip-even': !!groups, 'strip-dense': dense }"
     :style="minHeight ? { minHeight: minHeight + 'px' } : null"
   >
     <div class="strip-head">
@@ -203,8 +210,10 @@ onUnmounted(() => {
   border-radius: 10px;
   background: var(--bg-soft, rgba(255, 255, 255, 0.02));
   padding: 12px 16px 14px;
-  /* v37：采集区/加工区**同高**（变量在 main.css 的 :root） */
-  min-height: var(--strip-min-h, 0);
+  /* v38：**不再强制等高**。
+     v37 为了"窗口大小相同"给两条带子都加了 min-height:195px，
+     结果加工区只有 2 行，硬撑到 195 会在两行之间留一大片空 —— 用户看着别扭。
+     现在高度由内容决定：采集区 4 行自然 ~195，加工区 2 行自然 ~120。 */
 }
 .strip-head {
   display: flex;
@@ -336,7 +345,22 @@ onUnmounted(() => {
 }
 .strip-even .strip-body {
   flex: 1;
-  /* 两行分居上下（不是把行拉高，那样 chip 周围会空一大片） */
-  justify-content: space-between;
+  justify-content: flex-start;
+}
+
+/* v38：紧凑形态（加工队列）——高度约 100px，差不多是采集区那条的一半。
+   两行紧挨着排，不再上下分居（分居会让 2 行撑出 100px 的空白）。 */
+.strip-dense {
+  padding: 8px 14px 10px;
+  min-height: 0;
+}
+.strip-dense .strip-head {
+  margin-bottom: 5px;
+}
+.strip-dense .strip-title {
+  font-size: 13px;
+}
+.strip-dense .strip-body {
+  gap: 4px;
 }
 </style>

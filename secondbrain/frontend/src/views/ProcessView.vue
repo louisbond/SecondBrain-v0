@@ -431,14 +431,15 @@ onMounted(async () => {
         完全不是一回事，切页面视觉上跳。
 
         现在直接复用 StatusStrip（同一个组件 → 同一套 padding/字号/圆角），
-        两行分居上下，整条高度由 main.css 的 `--strip-min-h` 统一控制
-        （与采集区的条同高），切页面不会跳。
+        紧凑形态（v38）：用户说"看着别扭，高度减一半左右" ——
+        2 行按采集区那套 195px 铺会飘在大片空白里，这里 ~100px。
       -->
       <StatusStrip
         :groups="queueGroups"
         title="加工队列"
         :show-all="false"
         :per-group="8"
+        dense
         class="strip-top"
         @select="pickQueue"
       />

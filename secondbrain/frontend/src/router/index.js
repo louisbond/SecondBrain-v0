@@ -6,7 +6,7 @@ import { createRouter, createWebHistory } from 'vue-router'
  *   采集区 /workbench         收集素材 + 图文加工存储（经济工具拿原文）
  *   加工区 /process           核准 + 解析（先设模板/字数 → AI 总结 → 不满意附手稿）
  *   原创区 /original          写自己的东西（空模板骨架，与加工区并列）
- *   管理区 /manage            **管理 + 设置合并**（分区标签/解析模板/创作模板/
+ *   设置   /manage            **管理 + 设置合并**（分区标签/解析模板/创作模板/
  *                            AI 与密钥/采集与存储/维护与系统）
  *   设置   /settings         已并入管理区，这里只做重定向
  *   状态   /status            任务流水线完整页（**非一级导航**，
@@ -36,7 +36,7 @@ const routes = [
     path: '/manage',
     name: 'manage',
     component: () => import('@/views/ManageView.vue'),
-    meta: { title: '管理设置' }
+    meta: { title: '设置' }
   },
   // v37：设置页已并入管理区（用户："管理区和设置合并"）。
   // 保留这条路由做重定向，老的链接/书签不至于 404。
