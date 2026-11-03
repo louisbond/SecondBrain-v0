@@ -55,6 +55,7 @@ class Browser:
         self._reader: asyncio.Task | None = None
         self.console_errors: list[str] = []
         self.page_errors: list[str] = []
+        self.dialogs: list[str] = []
 
     # ---------------- 生命周期 ----------------
     async def __aenter__(self) -> "Browser":
@@ -158,6 +159,20 @@ class Browser:
             e = params.get("entry", {})
             if e.get("level") == "error":
                 self.console_errors.append(f"[log] {str(e.get('text'))[:400]}")
+        elif method == "Page.javascriptDialogOpening":
+            # confirm()/prompt() 会阻塞页面，不处理的话后续 CDP 命令全部超时。
+            # 一律**取消**——审计不该替用户点掉任何确认框。
+            self.dialogs.append(params.get("message", ""))
+            # 注意：不能在这里 await send()——响应是由本读循环派发的，
+            # await 会自锁（读循环卡在事件处理里，收不到自己的响应）。
+            # 另起任务处理。
+            asyncio.create_task(self._dismiss_dialog())
+
+    async def _dismiss_dialog(self) -> None:
+        try:
+            await self.send("Page.handleJavaScriptDialog", {"accept": False})
+        except Exception:  # noqa: BLE001
+            pass
 
     async def send(self, method: str, params: dict | None = None) -> dict:
         assert self.ws is not None

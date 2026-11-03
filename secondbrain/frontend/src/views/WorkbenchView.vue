@@ -262,7 +262,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div>
+  <div class="wb-page">
     <!-- 采集在上、解析在下（不并列；状态独立成页 /status） -->
     <div class="wb-col">
       <div class="card">
@@ -342,7 +342,9 @@ onUnmounted(() => {
       />
 
       <!-- ==================== 下：解析区 ==================== -->
-      <div>
+      <!-- 解析区内部滚动：原文全文 + 配图 + 状态条加起来会超过一屏，
+           页面框架（采集卡 + 状态横条）保持不动，只让下半部分滚。 -->
+      <div class="wb-scroll">
         <div v-if="!current" class="card empty">
           <div class="icon">▤</div>
           <div>选一条任务开始解析</div>
@@ -439,3 +441,30 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 采集区：纵向三段（采集卡 → 状态横条 → 解析区） */
+.wb-page {
+  height: 100%;
+  min-height: 0;
+}
+.wb-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+
+/* 解析区内部滚动。
+   上半（采集卡 + 状态横条）保持不动，长内容只在下半部分滚——
+   与加工区 .scroll-col 同一套做法（页面框架不滚，内容自己滚）。
+   用 flex:1 而不是写死 calc(100vh - N)：上半高度会随「速记」展开、
+   状态条条目数变化，写死的 N 迟早对不上。 */
+.wb-scroll {
+  flex: 1;
+  min-height: 160px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+</style>

@@ -51,11 +51,14 @@ PAGES: list[tuple[str, str, list[str]]] = [
     ("/status", "状态", [".tabs .tab", ".btn"]),
 ]
 
-# 绝对不能点的控件（会改数据或关服务）
+# 绝对不能点的控件（会改数据或关服务）。
+# 「跳过本条」虽然后端是 no-op，但它会让当前条目从核准流程里消失 ——
+# 跑在真实库上时不该替用户做这个决定。
 DANGEROUS_TEXT = [
     "关闭服务", "删除", "清除密钥", "重建索引", "重建向量",
     "清理", "备份", "注册开机自启", "注销开机自启",
     "设置为接通电源时不睡眠", "恢复主链", "切换",
+    "跳过本条", "确认入库", "插入配图", "重新分析",
 ]
 
 
@@ -271,6 +274,17 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     if args.base:
+        # 只读模式：对着真实库跑审计必须显式加 --allow-live，
+        # 因为「确认入库」这类控件会真的写库、落 md。
+        # 误点一次就会污染用户的真实知识库。
+        if not "--allow-live" in sys.argv:
+            print(
+                "拒绝执行：--base 指向的可能是真实库。\n"
+                "审计会点击控件，「确认入库」会真的写库落 md。\n"
+                "确认要对真实库跑（只读）请加 --allow-live。\n"
+                "（推荐：直接不带 --base，用隔离实例跑）"
+            )
+            sys.exit(2)
         sys.exit(asyncio.run(main(args.base)))
     else:
         from harness import IsolatedServer
