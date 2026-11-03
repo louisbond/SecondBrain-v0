@@ -98,11 +98,20 @@ async def lifespan(app: FastAPI):
 
     # AI 降级 toast 钩子（§6.1：自动降级时通知用户）
     try:
+        # 注意：`get_config` 已在**模块顶部**导入（第 25 行）。
+        # 这里绝对不能再写 `from app.core.config import get_config` ——
+        # 函数内任何位置的 import 都会让这个名字变成**整个函数的局部变量**，
+        # 于是本函数开头 `cfg = get_config()` 那一行会抛
+        # UnboundLocalError: cannot access local variable 'get_config'
+        # （v34 踩过：exe 启动直接失败，服务起不来）。
         from app.providers.ai_providers import get_router
         from app.services.notifier import notify_fallback
 
+        # 也不能用 router.current_name —— `_trigger_fallback()` 会先把
+        # `_current` 改成 ollama 再回调，那时读到的是备链名，
+        # 提示会变成"ollama 失败，已降级到 ollama"。用配置里的主链名。
         get_router().set_fallback_listener(
-            lambda reason: notify_fallback("workbuddy", reason)
+            lambda reason: notify_fallback(get_config().ai.provider, reason)
         )
     except Exception:
         pass

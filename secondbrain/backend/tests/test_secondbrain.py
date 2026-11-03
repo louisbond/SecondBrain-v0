@@ -2404,3 +2404,71 @@ class TestNoConsoleWindow:
             "这些地方直接调了 subprocess.run，会闪黑窗；"
             f"请改用 app.core.proc.run：{offenders}"
         )
+
+
+class TestLifespanScope:
+    """v34：`lifespan` 里不能在函数中间 import 模块级已有的名字。
+
+    回归背景：改 AI 降级钩子时在 `lifespan()` 中间写了
+    `from app.core.config import get_config`。Python 的规则是——
+    **函数内任何位置的 import 都会让这个名字变成整个函数的局部变量**，
+    于是函数开头第 70 行的 `cfg = get_config()` 抛：
+
+        UnboundLocalError: cannot access local variable 'get_config'
+        where it is not associated with a value
+        → Application startup failed
+
+    后果：**exe 直接起不来**（windowed 模式没控制台，只看到进程在但端口不通）。
+    单测全绿、开发态 import 也正常（因为只 import 模块不跑 lifespan），
+    所以这个坑只能靠"真的启动一次"或静态检查发现。
+    """
+
+    def test_no_shadowing_import_in_lifespan(self):
+        """静态检查：lifespan 内 import 的名字不能在同一函数里先被使用。"""
+        import ast
+        from pathlib import Path
+
+        main_py = Path(__file__).resolve().parent.parent / "app" / "main.py"
+        tree = ast.parse(main_py.read_text(encoding="utf-8"))
+
+        lifespan = None
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "lifespan":
+                lifespan = node
+                break
+        assert lifespan is not None, "没找到 lifespan()"
+
+        # 收集函数内所有 import 引入的顶层名字 → 行号
+        imported: dict[str, int] = {}
+        for n in ast.walk(lifespan):
+            if isinstance(n, ast.ImportFrom):
+                for al in n.names:
+                    imported[al.asname or al.name] = n.lineno
+            elif isinstance(n, ast.Import):
+                for al in n.names:
+                    imported[(al.asname or al.name).split(".")[0]] = n.lineno
+
+        # 找这些名字在**首次 import 之前**被读取的位置
+        first_import_line = min(imported.values()) if imported else 10**9
+        offenders = []
+        for n in ast.walk(lifespan):
+            if (
+                isinstance(n, ast.Name)
+                and isinstance(n.ctx, ast.Load)
+                and n.id in imported
+                and n.lineno < imported[n.id]
+            ):
+                offenders.append(f"第 {n.lineno} 行用了 {n.id}（它在第 {imported[n.id]} 行才 import）")
+
+        assert not offenders, (
+            "lifespan() 里这些名字会在 import 之前被当作局部变量使用，"
+            f"启动时会 UnboundLocalError：{offenders}"
+        )
+
+    def test_lifespan_registers_fallback_listener(self):
+        """降级钩子要能注册上（注册失败会被 except 静默吞掉）。"""
+        from app.providers.ai_providers import get_router
+
+        # 只要 current_name 可读、provider 能构造，就说明钩子链条没断
+        router = get_router()
+        assert router.current_name in ("ollama", "openai_compat", "")
