@@ -119,35 +119,6 @@ class WebConfig:
 
 
 @dataclass
-class WorkbuddyProviderConfig:
-    """CodeBuddy CLI（WorkBuddy 自带引擎）主链配置。
-
-    实机核查后的修正：
-    - 设计文档里的 `wbuddy` 命令**不存在**，真实对应是 `codebuddy daemon start/status`；
-    - `codebuddy` CLI 不在 PATH（WorkBuddy 桌面版自带），由 cli_path 显式指定，
-      留空则自动探测（WorkBuddy 安装目录 / 内置 bin/ / PATH）。
-    """
-
-    # CLI 路径；留空自动探测
-    cli_path: str = ""
-    start_command: list[str] = field(
-        default_factory=lambda: ["codebuddy", "daemon", "start"]
-    )
-    status_command: list[str] = field(
-        default_factory=lambda: ["codebuddy", "daemon", "status"]
-    )
-    command: list[str] = field(default_factory=lambda: ["codebuddy", "-p"])
-    # --tools "" 禁用所有工具：摘要任务不需要任何工具，能显著提速与省 token
-    extra_args: list[str] = field(
-        default_factory=lambda: ["-y", "--output-format", "json", "--tools", ""]
-    )
-    timeout: int = 180
-    health_timeout: int = 30
-    sidecar_poll_interval: float = 5.0
-    sidecar_start_window: float = 60.0
-
-
-@dataclass
 class OllamaProviderConfig:
     base_url: str = "http://127.0.0.1:11434/v1"
     model: str = "qwen2.5:7b-instruct"
@@ -168,10 +139,11 @@ class EmbeddingConfig:
 
 @dataclass
 class AIConfig:
-    provider: str = "workbuddy"
+    # v34：workbuddy 链路已移除（CLI 读不到桌面端认证，永远 auth_required）。
+    # 现在主链默认 openai_compat，备链 ollama。
+    provider: str = "openai_compat"
     auto_fallback: bool = True
     fallback_threshold: int = 3
-    workbuddy: WorkbuddyProviderConfig = field(default_factory=WorkbuddyProviderConfig)
     ollama: OllamaProviderConfig = field(default_factory=OllamaProviderConfig)
     openai_compat: OllamaProviderConfig = field(
         default_factory=lambda: OllamaProviderConfig(
@@ -532,41 +504,13 @@ class ConfigStore:
             token=str(token) if token else None,
         )
 
+        # v34：workbuddy 字段已移除。旧 config.toml 里的 [ai.workbuddy] 段
+        # 会被**静默忽略**（这里不读它，也不报错）——用户升级不用手改配置。
         ai = AIConfig(
-            provider=_get(toml_data, "ai.provider", "workbuddy"),
+            provider=_get(toml_data, "ai.provider", "openai_compat"),
             auto_fallback=_as_bool(_get(toml_data, "ai.auto_fallback", True), True),
             fallback_threshold=_as_int(
                 _get(toml_data, "ai.fallback_threshold", 3), 3
-            ),
-            workbuddy=WorkbuddyProviderConfig(
-                cli_path=str(_get(toml_data, "ai.workbuddy.cli_path", "") or ""),
-                start_command=_as_list(
-                    _get(toml_data, "ai.workbuddy.start_command", None),
-                    ["codebuddy", "daemon", "start"],
-                )
-                if _get(toml_data, "ai.workbuddy.start_command", None)
-                else ["codebuddy", "daemon", "start"],
-                status_command=_as_list(
-                    _get(toml_data, "ai.workbuddy.status_command", None),
-                    ["codebuddy", "daemon", "status"],
-                )
-                if _get(toml_data, "ai.workbuddy.status_command", None)
-                else ["codebuddy", "daemon", "status"],
-                command=_as_list(
-                    _get(toml_data, "ai.workbuddy.command", None), ["codebuddy", "-p"]
-                )
-                if _get(toml_data, "ai.workbuddy.command", None)
-                else ["codebuddy", "-p"],
-                extra_args=_as_list(
-                    _get(toml_data, "ai.workbuddy.extra_args", None),
-                    ["-y", "--output-format", "json", "--tools", ""],
-                )
-                if _get(toml_data, "ai.workbuddy.extra_args", None)
-                else ["-y", "--output-format", "json", "--tools", ""],
-                timeout=_as_int(_get(toml_data, "ai.workbuddy.timeout", 180), 180),
-                health_timeout=_as_int(
-                    _get(toml_data, "ai.workbuddy.health_timeout", 30), 30
-                ),
             ),
             ollama=OllamaProviderConfig(
                 base_url=_get(

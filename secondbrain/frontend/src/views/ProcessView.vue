@@ -69,7 +69,7 @@ const summaryTypeLabel = computed(() => {
  * 坑：`ai_model` 存的是**内部 provider 名**（openai_compat / ollama /
  * workbuddy），直接展示成 badge 就是「OPENAI_COMPAT」——
  * 用户完全不知道这是什么（截图里右上角那个）。
- * 现在映射成人话：「豆包 / ollama 本地 / WorkBuddy」。
+ * 现在映射成人话：「豆包（火山方舟）/ ollama 本地」。
  */
 const aiModelLabel = computed(() => {
   const m = String(current.value?.ai_model || '').toLowerCase()
@@ -78,7 +78,6 @@ const aiModelLabel = computed(() => {
     return '豆包（火山方舟）'
   }
   if (m.includes('ollama')) return 'ollama 本地'
-  if (m.includes('workbuddy') || m.includes('codebuddy')) return 'WorkBuddy'
   return m
 })
 

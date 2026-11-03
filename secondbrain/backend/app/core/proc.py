@@ -6,6 +6,7 @@
 
 - `cli_locator.run_cli()` —— 每次 AI provider 健康检查都调
   `codebuddy --version`，于是**每隔几秒闪一个 cmd 窗口**；
+  （v34 起 workbuddy 链路连同 cli_locator 一起删了，这条不再存在）
 - `asr_service._run_ytdlp()` —— 抽音频时闪；
 - `social_video` 的 yt-dlp 探测 —— 抓取时闪。
 
@@ -14,8 +15,7 @@ windowed 应用时，控制台子系统程序会自己申请一个）。必须�
 `CREATE_NO_WINDOW` 才能彻底不弹。
 
 **用法**：所有子进程都用这里的 `run()` / `popen()`，不要直接调
-`subprocess`。例外是「需要用户看见窗口」的登录流程 —— 那走
-`cli_locator.open_login_window()`，它自己带 `CREATE_NEW_CONSOLE`。
+`subprocess`。（v34 前有个例外是登录窗口，那条链路已删。）
 """
 
 from __future__ import annotations

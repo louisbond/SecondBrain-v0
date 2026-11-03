@@ -176,7 +176,6 @@ def main() -> int:
     if isinstance(prov, dict):
         names = {p["name"]: p for p in prov.get("providers", [])}
         print(
-            f"     · workbuddy: {names.get('workbuddy', {}).get('detail', '')[:60]}"
         )
         print(
             f"     · ollama: {names.get('ollama', {}).get('detail', '')[:60]}"

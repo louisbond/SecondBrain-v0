@@ -265,7 +265,6 @@ export const settingsApi = {
   enableAutostart: () => api.post('/api/settings/autostart/enable'),
   disableAutostart: () => api.post('/api/settings/autostart/disable'),
   neverSleep: () => api.post('/api/settings/power/never-sleep'),
-  providerLogin: () => api.post('/api/settings/provider/login'),
   getAiKey: () => api.get('/api/settings/ai-key'),
   saveAiKey: (payload) => api.post('/api/settings/ai-key', payload),
   shutdown: () => api.post('/api/settings/shutdown')

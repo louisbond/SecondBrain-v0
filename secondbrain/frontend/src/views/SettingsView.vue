@@ -135,15 +135,6 @@ async function setNeverSleep() {
   }
 }
 
-async function openLoginTerminal() {
-  try {
-    const r = await settingsApi.providerLogin()
-    toast(r.message, 'info', 8000)
-  } catch (e) {
-    toast((e.detail || e.message || '打开终端失败'), 'error')
-  }
-}
-
 async function clearArkKey() {
   if (!confirm('确认清除已保存的 API Key？')) return
   try {
@@ -301,23 +292,12 @@ onMounted(load)
           </span>
           <div class="spacer" style="flex:1"></div>
           <button class="btn ghost sm" @click="resetProvider">恢复主链</button>
-          <button
-            v-if="providers?.cli?.available"
-            class="btn sm"
-            @click="openLoginTerminal"
-          >
-            打开终端完成 CLI 登录
-          </button>
-        </div>
-
-        <div v-if="providers?.cli?.available" class="dim mono" style="font-size:11.5px;margin-bottom:10px">
-          codebuddy CLI：{{ providers.cli.path }}
-          <span v-if="providers.cli.is_node_script">（node 脚本，用 {{ providers.cli.node }} 执行）</span>
         </div>
 
         <!-- Provider 列表：内部滚动。
-             链的数量不固定（workbuddy/ollama/openai_compat…），不设上限的话
-             页面高度会随链数增长，破坏「每页内容高度 ≤ 视口」。 -->
+             链的数量不固定（ollama / openai_compat …），不设上限的话
+             页面高度会随链数增长，破坏「每页内容高度 ≤ 视口」。
+             v34：workbuddy 那条链已移除。 -->
         <div class="provider-list">
           <div
             v-for="p in providers?.providers || []"

@@ -47,7 +47,8 @@ class IsolatedServer:
         if real_cfg.exists():
             base_text = real_cfg.read_text(encoding="utf-8")
         if not base_text.strip():
-            base_text = '[ai]\nprovider = "workbuddy"\n'
+            # v34：workbuddy 链路已删，隔离实例的兜底主链用 openai_compat
+            base_text = '[ai]\nprovider = "openai_compat"\n'
 
         data_dir = (self.home / "data").as_posix()
         storage = {

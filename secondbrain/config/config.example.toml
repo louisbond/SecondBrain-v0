@@ -35,14 +35,6 @@ provider = "openai_compat" # workbuddy / ollama / openai_compat
 auto_fallback = true
 fallback_threshold = 3
 
-[ai.workbuddy]
-# CodeBuddy CLI：留空则自动探测 WorkBuddy 安装目录
-cli_path = ""
-command = ["codebuddy", "-p"]
-extra_args = ["-y", "--output-format", "json", "--tools", ""]
-timeout = 180
-health_timeout = 30
-
 [ai.ollama]
 base_url = "http://127.0.0.1:11434/v1"
 model = "qwen2.5:7b-instruct"

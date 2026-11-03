@@ -1,13 +1,19 @@
 """AI Provider 层。
 
-对齐 v0.5.0 §6.1：
-| 链路 | 配置 | 角色 |
-| workbuddy（主） | `wbuddy start/status` → `codebuddy -p ... -y --output-format json` → 方舟 API | 默认 |
-| ollama（备） | `http://127.0.0.1:11434/v1`，Qwen-7B/MiniCPM | 自动降级 |
-| openai_compat（通用） | 任意 OpenAI 兼容端点 | 手动切换 |
+v34：**workbuddy 链路已整体移除**（原设计 v0.5.0 §6.1 的三链之一）。
 
-健康检查与超时：`wbuddy status` 轮询 5s/次总窗口 60s；health prompt 30s；正式调用 180s。
-自动降级触发：方舟连续 ≥3 次失败 / 限流 429 / 额度耗尽 → 自动切 ollama 并 toast 告知；
+为什么删：那条链靠调用 WorkBuddy 桌面版自带的 `codebuddy` CLI（`-p` 非交互），
+本想"白借"桌面端已登录的授权来省 API key。但 CLI 在 SecondBrain 进程里
+**读不到桌面端的认证文件**，永远返回 `auth_required` —— 挂着只会让用户
+看到一条永远失败的链。连同 `cli_locator`（420 行 CLI 定位/登录脚本）一起删。
+
+现存两条链：
+| 链路 | 配置 | 角色 |
+| openai_compat（主） | 任意 OpenAI 兼容端点（现配火山方舟豆包） | 默认 |
+| ollama（备） | `http://127.0.0.1:11434/v1`，本地模型 | 自动降级 |
+
+健康检查与超时：health prompt 30s；正式调用 180s。
+自动降级触发：主链连续 ≥3 次失败 / 限流 429 / 额度耗尽 → 自动切 ollama 并 toast 告知；
 恢复后手动切回（避免来回抖动）。
 """
 
@@ -69,216 +75,7 @@ class Provider(Protocol):
 
 
 # --------------------------------------------------------------------------
-# workbuddy / codebuddy → 方舟主链
-# --------------------------------------------------------------------------
-
-@dataclass
-class WorkbuddyProvider:
-    """CodeBuddy CLI（WorkBuddy 自带引擎）主链。
-
-    流程：
-    1. 定位 CLI（`cli_locator.locate_cli()`：WorkBuddy 安装目录 / 内置 bin/ / PATH）；
-    2. `codebuddy daemon status` 检查；未运行则 `codebuddy daemon start` 并轮询；
-    3. `codebuddy -p <prompt> -y --output-format json` 执行（走方舟 API 额度）；
-    4. 解析 JSON 输出，剥离 CLI 的包装层，取出文本内容。
-
-    与设计文档 v0.5.0 附录 A 的差异（实机核查后修正）：
-    - `wbuddy start/status` → `codebuddy daemon start/status`（`wbuddy` 命令不存在）；
-    - 子进程环境会剥离 `CODEBUDDY_SERVICE_PROXY_URL`（避免与 WorkBuddy 桌面端
-      抢 5452 端口导致 EADDRINUSE）与代理变量（避免 CLI 内部 setProxy 崩溃）；
-    - CLI 是 node 脚本，需带 node 解释器执行。
-    """
-
-    cfg: AppConfig
-    name: str = "workbuddy"
-    _cli_port: int = 0
-    _last_auth_error: str = ""
-    _lock: threading.Lock = field(default_factory=threading.Lock)
-
-    # -- CLI 定位 ---------------------------------------------------------
-    def _cli(self):
-        from app.core.cli_locator import locate_cli
-
-        return locate_cli(self.cfg.ai.workbuddy.cli_path or None)
-
-    def _run(self, args: list[str], timeout: float) -> tuple[int, str, str]:
-        """执行 CLI（自动补 node 解释器、剥离冲突环境变量）。"""
-        from app.core.cli_locator import run_cli
-
-        info = self._cli()
-        if info.path is None:
-            return 127, "", "未找到 codebuddy CLI"
-        return run_cli(args, timeout=int(timeout), cwd=info.path.parent, info=info)
-
-    # -- 端口分配 ---------------------------------------------------------
-    def _port(self) -> int:
-        """给 CLI 分配一个空闲端口。
-
-        这个 WorkBuddy 定制版 CLI 的 HTTP server 默认端口是**硬编码 5452**
-        （见 dist/lazy-lite-wb/*.mjs），而 5452 正是 WorkBuddy 桌面端自己
-        占用的服务代理端口 → EADDRINUSE。
-        实测：主命令（`-p` / `--version`）接受 `--port`，但 `daemon` 子命令不接受。
-        所以每次调用都显式指定一个空闲端口。
-        """
-        if self._cli_port:
-            return self._cli_port
-        import socket
-
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                sock.bind(("127.0.0.1", 0))
-                self._cli_port = int(sock.getsockname()[1])
-            except OSError:
-                self._cli_port = 0
-        return self._cli_port
-
-    def _with_port(self, args: list[str]) -> list[str]:
-        """给主命令参数注入 --port（子命令不能注入）。"""
-        if args and args[0] in ("daemon", "ps", "logs", "attach", "kill", "stop", "rm",
-                                "respawn", "agents", "mcp", "config", "sandbox",
-                                "plugin", "project", "doctor", "update", "install",
-                                "cleanup", "auto-mode"):
-            return args
-        port = self._port()
-        if not port:
-            return args
-        return ["--port", str(port), *args]
-
-    # -- 健康检查 ---------------------------------------------------------
-    def health(self) -> ProviderHealth:
-        """健康检查：`codebuddy --version`（快、免费、不需要认证）。"""
-        start = time.time()
-        info = self._cli()
-        if info.path is None:
-            return ProviderHealth(
-                ok=False,
-                detail=(
-                    "未找到 codebuddy CLI。WorkBuddy 桌面版自带该引擎，"
-                    "通常在 <安装目录>/resources/app.asar.unpacked/cli/bin/codebuddy"
-                ),
-                model="ark",
-            )
-        if info.is_node_script and not info.node:
-            return ProviderHealth(
-                ok=False, detail="codebuddy 是 node 脚本，但系统里找不到 node", model="ark"
-            )
-
-        code, out, err = self._run(["--version"], timeout=self.cfg.ai.workbuddy.health_timeout)
-        detail = (out or err).strip()[:300]
-        ok = code == 0
-        if not ok:
-            if "eaddrinuse" in detail.lower():
-                detail = "端口冲突（EADDRINUSE）"
-            return ProviderHealth(ok=False, detail=detail, model="ark")
-
-        hint = ""
-        if self._last_auth_error:
-            hint = f"；⚠ {self._last_auth_error}"
-        return ProviderHealth(
-            ok=True,
-            detail=f"CLI {detail}（{info.path}）{hint}",
-            latency_ms=int((time.time() - start) * 1000),
-            model="ark",
-        )
-
-    # -- 调用 -------------------------------------------------------------
-    def complete(self, prompt: str, *, system: str = "") -> str:
-        """非交互调用：codebuddy -p <prompt> -y --output-format json --tools "" """
-        full_prompt = f"{system}\n\n{prompt}" if system else prompt
-        args = self._with_port(
-            [
-                *self.cfg.ai.workbuddy.command,
-                full_prompt,
-                *self.cfg.ai.workbuddy.extra_args,
-            ]
-        )
-        code, out, err = self._run(args, timeout=self.cfg.ai.workbuddy.timeout)
-        text = (out or "").strip()
-
-        if code != 0 or not text:
-            blob = f"{out}\n{err}"
-            low = blob.lower()
-            if "authentication required" in low or "sign in" in low or "/login" in low:
-                self._last_auth_error = (
-                    "codebuddy CLI 未认证。两种可能："
-                    "(1) 尚未登录——请在终端运行 `codebuddy`，选「Log in via Chinese Site」完成认证；"
-                    "(2) 进程运行在受限环境里读不到认证文件"
-                    "（日志特征：EPERM … auth/workbuddy-desktop.info）"
-                    "——此时请让 SecondBrain 在沙箱外运行（自己双击 exe，或在自己终端里启动服务）"
-                )
-                raise ProviderError(self._last_auth_error, auth_required=True)
-            if "eaddrinuse" in low:
-                # 端口被抢：换一个端口重试一次
-                self._cli_port = 0
-                args = self._with_port(args[2:] if args[:2] == ["--port", args[1]] else args)
-                code, out, err = self._run(args, timeout=self.cfg.ai.workbuddy.timeout)
-                text = (out or "").strip()
-                if code == 0 and text:
-                    return self._extract_text(text)
-                blob = f"{out}\n{err}"
-                low = blob.lower()
-
-            rate_limited = "429" in low or "rate limit" in low or "限流" in blob
-            quota = any(
-                k in low
-                for k in ("quota", "insufficient", "余额不足", "额度", "credit exhausted")
-            )
-            raise ProviderError(
-                f"codebuddy 调用失败（退出码 {code}）：{(err or out).strip()[:300]}",
-                rate_limited=rate_limited,
-                quota=quota,
-            )
-
-        self._last_auth_error = ""
-        return self._extract_text(text)
-
-    @staticmethod
-    def _extract_text(raw: str) -> str:
-        """从 codebuddy 输出中取文本内容。
-
-        `--output-format json` 通常返回形如
-          {"type":"result","result":"...","is_error":false}
-        但不同版本结构有差异，这里做多级兜底解析。
-        """
-        raw = raw.strip()
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            # 可能是多行 JSON 或夹杂日志，取最后一个大括号块
-            match = re.search(r"\{.*\}\s*$", raw, re.DOTALL)
-            if not match:
-                return raw
-            try:
-                payload = json.loads(match.group(0))
-            except json.JSONDecodeError:
-                return raw
-
-        return WorkbuddyProvider._walk_json(payload)
-
-    @staticmethod
-    def _walk_json(node: Any) -> str:
-        """在 JSON 结构里寻找文本内容。"""
-        if isinstance(node, str):
-            return node
-        if isinstance(node, list):
-            parts = [WorkbuddyProvider._walk_json(x) for x in node]
-            return "\n".join(p for p in parts if p)
-        if isinstance(node, dict):
-            for key in ("result", "text", "content", "message", "output", "response"):
-                if key in node:
-                    value = WorkbuddyProvider._walk_json(node[key])
-                    if value:
-                        return value
-            for value in node.values():
-                text = WorkbuddyProvider._walk_json(value)
-                if text:
-                    return text
-        return ""
-
-
-# --------------------------------------------------------------------------
-# Ollama / OpenAI 兼容链
+# OpenAI 兼容端点（豆包 / ollama / 任意兼容服务）
 # --------------------------------------------------------------------------
 
 @dataclass
@@ -419,8 +216,6 @@ class ProviderRouter:
 
     def build(self, name: str) -> Provider | None:
         cfg = self._sync_cfg()
-        if name == "workbuddy":
-            return WorkbuddyProvider(cfg=cfg)
         if name == "ollama":
             o = cfg.ai.ollama
             return OpenAICompatProvider(
@@ -493,7 +288,7 @@ class ProviderRouter:
             try:
                 result = provider.complete(prompt, system=system, timeout=timeout)
             except TypeError:
-                # 不支持 timeout 参数的 provider（如 workbuddy CLI）走默认
+                # 老式 provider 实现不接受 timeout 参数 → 退回不带 timeout 的调用
                 result = provider.complete(prompt, system=system)
         except ProviderError as exc:
             # 认证类错误**不触发降级**：
@@ -559,7 +354,7 @@ class ProviderRouter:
             return dict(self._health_cache)
 
         out: list[dict[str, Any]] = []
-        for name in ("workbuddy", "ollama", "openai_compat"):
+        for name in ("ollama", "openai_compat"):
             provider = self.build(name)
             if provider is None:
                 continue

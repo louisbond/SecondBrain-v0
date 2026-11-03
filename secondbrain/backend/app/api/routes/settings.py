@@ -165,78 +165,14 @@ async def get_settings() -> dict[str, Any]:
     }
 
 
-@router.post("/provider/login")
-async def provider_login() -> dict[str, Any]:
-    """打开一个终端窗口跑 codebuddy 交互式登录。
-
-    登录是 CLI 的交互流程（选登录方式 → 浏览器认证），
-    非交互子进程做不了，只能把终端弹出来让用户操作。
-
-    **v31 改动**：
-    1. 先探一次认证状态，已登录就直接返回，不再弹窗（用户点一次弹一次很烦）；
-    2. 不用 `os.startfile`（走系统文件关联，用户机器上弹出的是
-       一个标题为应用目录、内容是 CLI 自己的快捷键提示的黑窗口）；
-       改用 Windows Terminal / 明确的 conhost 窗口，脚本里有中文指引。
-    """
-    from app.core.cli_locator import (
-        locate_cli,
-        open_login_window,
-        write_login_script,
-    )
-    from app.providers.ai_providers import get_router
-
-    # 1) 已登录就别弹窗
-    try:
-        router = get_router()
-        provider = router.build("workbuddy")
-        if provider is not None:
-            provider.complete("只回复一个字：好", timeout=90)
-            return {
-                "ok": True,
-                "already_logged_in": True,
-                "message": "已经登录成功了，无需再弹窗口。",
-            }
-    except Exception:  # noqa: BLE001
-        pass  # 没登录 / 调用失败 → 继续走弹窗流程
-
-    info = locate_cli()
-    if info.path is None:
-        raise HTTPException(status_code=404, detail="未找到 codebuddy CLI")
-    if info.is_node_script and not info.node:
-        raise HTTPException(status_code=400, detail="codebuddy 是 node 脚本，但找不到 node")
-
-    script = write_login_script(info)
-    try:
-        how = open_login_window(script)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(
-            status_code=500, detail=f"无法打开登录窗口：{exc}"
-        ) from exc
-
-    return {
-        "ok": True,
-        "already_logged_in": False,
-        "how": how,
-        "cli_path": str(info.path),
-        "script": str(script),
-        "message": (
-            "已弹出一个标题为「SecondBrain - WorkBuddy 登录」的窗口。"
-            "请选带 Chinese / 国内 标识的登录方式"
-            "（通常是「Log in via Chinese Site」）。"
-            "浏览器完成认证后回到该窗口按任意键关闭，"
-            "然后回这里点「刷新」。"
-        ),
-    }
-
-
 @router.get("/providers")
 async def providers() -> dict[str, Any]:
-    """Provider 健康状态。"""
-    from app.core.cli_locator import locate_cli
+    """Provider 健康状态。
 
-    data = get_router().health()
-    data["cli"] = locate_cli().to_dict()
-    return data
+    v34：不再返回 `cli` 字段 —— workbuddy（codebuddy CLI）链路已整体移除，
+    `cli_locator` 也一并删了。
+    """
+    return get_router().health()
 
 
 @router.post("/provider")
@@ -245,7 +181,7 @@ async def switch_provider(req: ProviderRequest) -> dict[str, Any]:
 
     同时写入 config.toml——否则重启后又回到旧链，用户会以为"切换没生效"。
     """
-    if req.provider not in ("workbuddy", "ollama", "openai_compat"):
+    if req.provider not in ("ollama", "openai_compat"):
         raise HTTPException(status_code=400, detail="未知 provider")
 
     from app.core.config import PROJECT_ROOT, set_toml_value

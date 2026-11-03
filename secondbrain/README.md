@@ -62,7 +62,7 @@ secondbrain/
 │  ├─ app/
 │  │  ├─ core/         config / db / parser / tokenizer / vault / fts
 │  │  ├─ adapters/     bilibili / douyin / kuaishou / xiaohongshu / web
-│  │  ├─ providers/    ai_providers（workbuddy→方舟 / ollama / openai_compat）
+│  │  ├─ providers/    ai_providers（ollama / openai_compat；v34 起 workbuddy 已删）
 │  │  │                ai_service（prompt 模板 + JSON 契约 + 重试）
 │  │  ├─ services/     ingest / review / search / notes / index / tag
 │  │  │                recap / asr / embedding / backfill / notifier / autostart
@@ -156,7 +156,7 @@ C 层结果永远排在 B 层之前。
 
 | 链路 | 配置 | 角色 |
 |---|---|---|
-| workbuddy | WorkBuddy 自带的 **CodeBuddy CLI**（npm 包 `@genie/agent-cli`）→ 方舟 API | 默认主链 |
+| ~~workbuddy~~ | ~~WorkBuddy 自带的 **CodeBuddy CLI**~~ → **v34 已删除**（CLI 读不到桌面端认证，永远 auth_required） | — |
 | ollama | `http://127.0.0.1:11434/v1`，Qwen-7B | 自动降级备链 |
 | openai_compat | 任意 OpenAI 兼容端点（火山方舟等） | 手动切换；**设置页可直接填 API Key** |
 
@@ -200,6 +200,8 @@ C 层结果永远排在 B 层之前。
 > 3. 401/403 属认证类错误，**不触发降级**（备链多半也没配）。
 
 #### CodeBuddy CLI 接入（实机核查后的修正）
+
+> **v34：workbuddy 链路连同 `cli_locator.py` 已整体删除**，下面这段调研作废，仅作历史记录。
 
 设计文档 v0.5.0 附录 A 假设了 `wbuddy` / `codebuddy` 两个命令，实机核查结论：
 

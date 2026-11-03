@@ -179,74 +179,6 @@ class TestAudioCompat:
         assert info["ytdlp_exists"] is True, info
 
 
-class TestCliLocator:
-    """CodeBuddy CLI 定位与环境处理（实机核查后的修正点）。"""
-
-    def test_strip_env_removes_conflicting_vars(self):
-        """必须剥离会引发端口冲突/代理崩溃的环境变量。"""
-        from app.core.cli_locator import STRIP_ENV, build_env
-
-        env = build_env()
-        for key in STRIP_ENV:
-            assert key not in env, f"{key} 未被剥离"
-
-    def test_strip_env_keeps_other_vars(self):
-        from app.core.cli_locator import build_env
-
-        env = build_env()
-        # PATH 等必须保留，否则 node 找不到
-        assert "PATH" in env or "Path" in env or "PATH" in str(env.keys())
-
-    def test_locate_cli_returns_something(self):
-        """定位函数不应抛异常；找不到时 available=False。"""
-        from app.core.cli_locator import locate_cli
-
-        info = locate_cli()
-        assert isinstance(info.available, bool)
-        if info.available:
-            assert info.path is not None and info.path.exists()
-
-    def test_workbuddy_provider_uses_real_cli(self):
-        """provider 的健康检查应基于真实 CLI（--version），不依赖 daemon。"""
-        from app.core.config import get_config
-        from app.providers.ai_providers import WorkbuddyProvider
-
-        provider = WorkbuddyProvider(cfg=get_config())
-        health = provider.health()
-        # 本机装了 WorkBuddy → CLI 应可定位；未登录时 ok 仍为 True（CLI 可执行）
-        assert health.detail  # 有可读的说明
-        assert "CLI" in health.detail or "未找到" in health.detail
-
-    def test_port_injection_skips_subcommands(self):
-        """--port 只能加在主命令上，子命令加了会报 unknown option。"""
-        from app.core.config import get_config
-        from app.providers.ai_providers import WorkbuddyProvider
-
-        provider = WorkbuddyProvider(cfg=get_config())
-        main_args = provider._with_port(["-p", "hello"])
-        assert main_args[0] == "--port" and main_args[1].isdigit()
-
-        sub_args = provider._with_port(["daemon", "status"])
-        assert sub_args == ["daemon", "status"]
-
-    def test_provider_reports_auth_error_actionably(self):
-        """未登录时应给出可操作的提示，而不是裸的原始错误。"""
-        from app.core.config import get_config
-        from app.providers.ai_providers import ProviderError, WorkbuddyProvider
-
-        provider = WorkbuddyProvider(cfg=get_config())
-
-        # 用假结果模拟"未登录"
-        def fake_run(args, timeout):
-            return 0, "", "Authentication required. Please use /login command to sign in to your account"
-
-        provider._run = fake_run  # type: ignore[assignment]
-        with pytest.raises(ProviderError) as exc:
-            provider.complete("测试")
-        assert "未登录" in str(exc.value)
-        assert "codebuddy" in str(exc.value)
-
-
 class TestParser:
     def test_parse_mixed_share_text(self):
         from app.core.parser import parse_links
@@ -1375,7 +1307,7 @@ class TestProviderConfig:
         """v31：只有 summary 是必需的。
 
         回归背景：REQUIRED_FIELDS 曾经是 ("summary", "tags", "partitions")，
-        模型少给一个键 → 整条 ai_failed（workbuddy 链上真发生过：
+        模型少给一个键 → 整条 ai_failed（真发生过：
         「AI 契约调用失败（3 次尝试）：缺少必需字段：partitions」）。
         分区/标签是**辅助建议**，用户能在加工区自己勾选，
         缺了就当"没建议"，不该让整条任务失败。
@@ -1425,7 +1357,7 @@ class TestProviderConfig:
         from app.core.config import get_config
 
         router = ProviderRouter(cfg=get_config())
-        router.switch("workbuddy", manual=True)
+        router.switch("openai_compat", manual=True)
 
         called: list[str] = []
 
@@ -1435,7 +1367,7 @@ class TestProviderConfig:
 
             def complete(self, prompt, system=""):
                 called.append(self.name)
-                if self.name == "workbuddy":
+                if self.name == "openai_compat":
                     raise ProviderError("HTTP 429 限流", rate_limited=True)
                 return "ollama-ok"
 
@@ -1447,7 +1379,7 @@ class TestProviderConfig:
         router.build = lambda name: FakeProvider(name)  # type: ignore[assignment]
         out = router.complete("test")
         assert out == "ollama-ok"
-        assert called == ["workbuddy", "ollama"]
+        assert called == ["openai_compat", "ollama"]
         assert router.fallback_active is True
         assert router.current_name == "ollama"
 
@@ -1459,10 +1391,10 @@ class TestProviderConfig:
         cfg.ai.auto_fallback = False
         try:
             router = ProviderRouter(cfg=cfg)
-            router.switch("workbuddy", manual=True)
+            router.switch("openai_compat", manual=True)
 
             class FakeProvider:
-                name = "workbuddy"
+                name = "openai_compat"
 
                 def complete(self, prompt, system=""):
                     raise ProviderError("boom", rate_limited=True)
@@ -1470,7 +1402,7 @@ class TestProviderConfig:
             router.build = lambda name: FakeProvider()  # type: ignore[assignment]
             with pytest.raises(ProviderError):
                 router.complete("test")
-            assert router.current_name == "workbuddy"
+            assert router.current_name == "openai_compat"
         finally:
             cfg.ai.auto_fallback = True
 
@@ -1484,18 +1416,18 @@ class TestProviderConfig:
         from app.providers.ai_providers import ProviderError, ProviderRouter
 
         router = ProviderRouter(cfg=get_config())
-        router.switch("workbuddy", manual=True)
+        router.switch("openai_compat", manual=True)
 
         class FakeProvider:
-            name = "workbuddy"
+            name = "openai_compat"
 
             def complete(self, prompt, system=""):
-                raise ProviderError("codebuddy CLI 未登录", auth_required=True)
+                raise ProviderError("API Key 未配置", auth_required=True)
 
         called = []
 
         def _build(name):
-            if name == "workbuddy":
+            if name == "openai_compat":
                 return FakeProvider()
             called.append(name)
 
@@ -1510,7 +1442,7 @@ class TestProviderConfig:
         with pytest.raises(ProviderError):
             router.complete("test")
 
-        assert router.current_name == "workbuddy", "认证错误不应触发降级"
+        assert router.current_name == "openai_compat", "认证错误不应触发降级"
         assert router.fallback_active is False
         assert "ollama" not in called, "认证错误不应尝试备链"
 
@@ -2410,8 +2342,11 @@ class TestNoConsoleWindow:
     小于 1s 的窗口闪退」。
 
     根因：散落各处的 `subprocess.run` 没加 CREATE_NO_WINDOW。
-    最典型的是 `cli_locator.run_cli()` —— 每次 AI provider 健康检查都调
-    `codebuddy --version`，于是**每隔几秒闪一个 cmd 窗口**。
+    最典型的是 `asr_service._run_ytdlp()`（每次抽音频）和
+    `social_video` 的 yt-dlp 探测（每次抓取）—— 都是控制台程序，
+    不显式抑制就会闪一个窗口。
+    （v34 前还有 cli_locator 每次健康检查跑 codebuddy --version，
+      那条链路已删。）
 
     Windows 上子进程默认会自己申请控制台（父进程是 windowed 应用时），
     必须显式 CREATE_NO_WINDOW 才能彻底不弹。
@@ -2446,8 +2381,7 @@ class TestNoConsoleWindow:
     def test_no_bare_subprocess_without_flags(self):
         """静态检查：app/ 里不该有裸 subprocess.run（都该走 proc 工具）。
 
-        例外：`cli_locator.open_login_window()` 里那几个 Popen 是**故意要
-        窗口**的（登录是交互流程），它自己带 CREATE_NEW_CONSOLE。
+        v34：登录窗口那条链路已删，现在**没有任何合法例外**。
         """
         import re
         from pathlib import Path
