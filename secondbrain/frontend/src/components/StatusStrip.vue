@@ -23,7 +23,23 @@ const props = defineProps({
   /** 每组最多显示几条条目 */
   perGroup: { type: Number, default: 3 },
   /** 自动轮询间隔（ms），0 = 不轮询 */
-  poll: { type: Number, default: 0 }
+  poll: { type: Number, default: 0 },
+  /**
+   * v37：**外部直接给分组**（加工区用）。
+   * 传了就不按 state 分组，也不显示「全部 →」（加工区没有状态页可跳）。
+   * 形状：[{ key, label, icon, cls, items: [{id, title, ...}] }]
+   */
+  groups: { type: Array, default: null },
+  /** 标题，默认「任务状态」*/
+  title: { type: String, default: '任务状态' },
+  /** 是否显示右上「全部 →」*/
+  showAll: { type: Boolean, default: true },
+  /**
+   * 最小高度（px）。用途：**跨页面窗口等高**。
+   * 采集区有 4 行、加工区只有 2 行，不设这个两条带子高度会差 50px 左右，
+   * 切页面时内容会跳。传同一个值就齐了。
+   */
+  minHeight: { type: Number, default: 0 }
 })
 
 const emit = defineEmits(['select'])
@@ -45,8 +61,23 @@ const GROUPS = [
 const allItems = computed(() => props.items || ownItems.value)
 const allStats = computed(() => props.stats || ownStats.value)
 
-const groups = computed(() =>
-  GROUPS.map((g) => {
+const groups = computed(() => {
+  // 外部给了分组（加工区：待加工 / 待手核）→ 只做截断，不改语义
+  if (props.groups) {
+    return props.groups.map((g) => {
+      const list = g.items || []
+      return {
+        key: g.key,
+        label: g.label,
+        icon: g.icon || '',
+        cls: g.cls || '',
+        count: list.length,
+        shown: list.slice(0, props.perGroup)
+      }
+    })
+  }
+  // 默认：按 state 分四组（采集区）
+  return GROUPS.map((g) => {
     const list = allItems.value.filter((i) => i.state === g.key)
     return {
       ...g,
@@ -54,9 +85,14 @@ const groups = computed(() =>
       shown: list.slice(0, props.perGroup)
     }
   })
-)
+})
 
-const total = computed(() => allStats.value.total ?? allItems.value.length)
+const total = computed(() => {
+  if (props.groups) {
+    return props.groups.reduce((n, g) => n + (g.items || []).length, 0)
+  }
+  return allStats.value.total ?? allItems.value.length
+})
 
 async function load() {
   try {
@@ -101,12 +137,16 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="status-strip">
+  <div
+    class="status-strip"
+    :class="{ 'strip-even': !!groups }"
+    :style="minHeight ? { minHeight: minHeight + 'px' } : null"
+  >
     <div class="strip-head">
-      <span class="strip-title"><span>≡</span> 任务状态</span>
+      <span class="strip-title"><span>≡</span> {{ title }}</span>
       <span class="dim mono" style="font-size:11px">共 {{ total }} 条</span>
       <div class="spacer" style="flex:1"></div>
-      <button class="btn ghost sm" @click="goAll">全部 →</button>
+      <button v-if="showAll" class="btn ghost sm" @click="goAll">全部 →</button>
     </div>
 
     <div class="strip-body">
@@ -122,8 +162,9 @@ onUnmounted(() => {
         <button
           class="strip-badge"
           :class="g.cls"
-          :title="`查看全部「${g.label}」任务`"
-          @click="goFiltered(g.key)"
+          :title="showAll ? `查看全部「${g.label}」任务` : g.label"
+          :disabled="!showAll"
+          @click="showAll && goFiltered(g.key)"
         >
           {{ g.icon }} {{ g.label }} {{ g.count }}
         </button>
@@ -146,7 +187,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <span v-if="!allItems.length" class="dim" style="font-size:11.5px">
+      <span v-if="!total" class="dim" style="font-size:11.5px">
         还没有任务
       </span>
     </div>
@@ -162,6 +203,8 @@ onUnmounted(() => {
   border-radius: 10px;
   background: var(--bg-soft, rgba(255, 255, 255, 0.02));
   padding: 12px 16px 14px;
+  /* v37：采集区/加工区**同高**（变量在 main.css 的 :root） */
+  min-height: var(--strip-min-h, 0);
 }
 .strip-head {
   display: flex;
@@ -229,6 +272,16 @@ onUnmounted(() => {
   color: var(--accent);
   border-color: var(--accent-border);
 }
+/* 加工区「待手核」用 warn 色（和采集区的 成功/失败/进行中 区分开） */
+.strip-badge.warn {
+  color: var(--warn, #e0a33a);
+  border-color: var(--warn, #e0a33a);
+}
+/* 加工区「待手核」用 warn 色（和采集区的 成功/失败/进行中 区分开） */
+.strip-badge.warn {
+  color: var(--warn, #e0a33a);
+  border-color: var(--warn, #e0a33a);
+}
 .strip-item {
   font-size: 12.5px;
   padding: 4px 11px;
@@ -254,5 +307,36 @@ onUnmounted(() => {
   cursor: pointer;
   flex: 0 0 auto;
   white-space: nowrap;
+}
+/* 不可点的徽标（加工区没有状态页可跳）：不要装成按钮 */
+.strip-badge:disabled {
+  cursor: default;
+}
+.strip-badge:disabled:hover {
+  border-color: var(--line);
+  color: var(--text-dim);
+}
+.strip-badge.ok:disabled:hover {
+  border-color: var(--ok, #35c48e);
+  color: var(--ok, #35c48e);
+}
+.strip-badge.danger:disabled:hover {
+  border-color: var(--danger, #e5484d);
+  color: var(--danger, #e5484d);
+}
+.strip-badge.accent:disabled:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+/* v37：外部分组模式（加工区 2 行）——行均分高度，使整条与采集区等高 */
+.strip-even {
+  display: flex;
+  flex-direction: column;
+}
+.strip-even .strip-body {
+  flex: 1;
+  /* 两行分居上下（不是把行拉高，那样 chip 周围会空一大片） */
+  justify-content: space-between;
 }
 </style>

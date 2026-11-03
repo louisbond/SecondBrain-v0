@@ -23,6 +23,7 @@ from app.api.routes import (
     collect,
     items,
     jobs,
+    note_templates,
     notes,
     partitions,
     recap,
@@ -50,3 +51,4 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(upload.router)
     app.include_router(vault.router)
     app.include_router(workbench.router)
+    app.include_router(note_templates.router)

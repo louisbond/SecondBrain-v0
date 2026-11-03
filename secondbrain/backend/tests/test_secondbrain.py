@@ -2472,3 +2472,74 @@ class TestLifespanScope:
         # 只要 current_name 可读、provider 能构造，就说明钩子链条没断
         router = get_router()
         assert router.current_name in ("ollama", "openai_compat", "")
+
+
+class TestNoteTemplates:
+    """v37：创作模板（原创区「空模板」）落库，管理区可增删改。
+
+    回归背景：用户说「原创区的模板可在管理区添加」——
+    这 6 个模板原来硬编码在 `OriginalView.vue` 里，加一个要改代码重打包。
+    现在进库，管理区 CRUD，原创区只读。
+
+    与「解析模板」的区别：这个是给**人**的 Markdown 骨架，
+    那个是给**AI**的提示词。两张表、两个接口，别混。
+    """
+
+    def test_seed_creates_builtin_templates(self):
+        from app.services.note_template_service import get_note_template_service
+
+        svc = get_note_template_service()
+        svc.ensure_seeded()
+        names = {t["name"] for t in svc.list()}
+        assert {"知识提炼", "知识聚合", "日记", "周回顾", "规则模板", "基本概念"} <= names
+
+    def test_create_update_delete(self):
+        from app.services.note_template_service import get_note_template_service
+
+        svc = get_note_template_service()
+        svc.ensure_seeded()
+
+        created = svc.create("测试创作模板", "## 小节\n", "说明", ["测试"], "")
+        assert created and created["id"] > 0
+        assert created["suggest_tags"] == ["测试"]
+        assert created["source"] == "manual"
+
+        updated = svc.update(created["id"], body="## 改过\n", suggest_tags=["改后"])
+        assert updated["body"] == "## 改过\n"
+        assert updated["suggest_tags"] == ["改后"]
+
+        assert svc.delete(created["id"]) is True
+        assert svc.get(created["id"]) is None
+        assert all(t["id"] != created["id"] for t in svc.list())
+
+    def test_name_must_be_unique(self):
+        from app.services.note_template_service import get_note_template_service
+
+        svc = get_note_template_service()
+        svc.create("唯一名模板", "正文")
+        assert svc.create("唯一名模板", "另一份") is None
+
+    def test_deleted_builtin_is_not_reseeded(self):
+        """删掉的内置模板不能被播种逻辑偷偷加回来（用户会以为删不掉）。"""
+        from app.services.note_template_service import get_note_template_service
+
+        svc = get_note_template_service()
+        # 先补回内置（同文件里别的用例可能已经删过），保证目标存在
+        svc.restore_defaults()
+        target = next(t for t in svc.list() if t["name"] == "规则模板")
+
+        assert svc.delete(target["id"]) is True
+        svc.ensure_seeded()
+        assert all(t["name"] != "规则模板" for t in svc.list()), "删掉的又被播回来了"
+
+    def test_restore_defaults_brings_it_back(self):
+        from app.services.note_template_service import get_note_template_service
+
+        svc = get_note_template_service()
+        svc.restore_defaults()  # 保证存在（上一个用例删过它）
+        target = next(t for t in svc.list() if t["name"] == "规则模板")
+        svc.delete(target["id"])
+
+        added = svc.restore_defaults()
+        assert added >= 1
+        assert any(t["name"] == "规则模板" for t in svc.list())

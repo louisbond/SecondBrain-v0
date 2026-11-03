@@ -11,6 +11,7 @@ import { ref, computed, onMounted, inject, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { reviewApi, itemsApi, workbenchApi, searchApi } from '../api/client'
 import { saveDraft } from '../utils/draft'
+import StatusStrip from '../components/StatusStrip.vue'
 
 const toast = inject('toast')
 const refreshSignal = inject('refreshSignal')
@@ -95,6 +96,31 @@ const currentStageHint = computed(() => {
 // 这时按钮该叫「AI 提取要点」而不是「重新分析」——语义完全不同。
 const isRawReady = computed(() => current.value?.item?.status === 'raw_ready')
 
+/**
+ * 加工队列的两行分组（v37）。
+ *
+ * 与采集区「完成/失败/进行中/等待」不同，加工区关心的是**下一步做什么**：
+ *   待加工 = pending_review（AI 已提取，等你确认）
+ *   待手核 = manualQueue（原文就绪 raw_ready，或抓取/解析失败要人接手）
+ */
+const queueGroups = computed(() => [
+  { key: 'pending', label: '待加工', icon: '✎', cls: 'accent', items: queue.value },
+  {
+    key: 'manual',
+    label: manualQueue.value.some((i) => i.status !== 'raw_ready')
+      ? '待手核 · 含异常'
+      : '待手核',
+    icon: '✋',
+    cls: 'warn',
+    items: manualQueue.value
+  }
+])
+
+/** 点队列里的 chip = 选中该条目（和原来点 chip 的行为一致）。 */
+function pickQueue(item) {
+  if (item && item.id) selectItem(item.id)
+}
+
 const otherTags = computed(() => {
   const used = new Set([
     ...(current.value?.suggested_tags || []),
@@ -108,14 +134,6 @@ const otherTags = computed(() => {
 // 队列分组的标题（v35：用户要求「等你加工」改成「待手核」）。
 // raw_ready = 采集完的原文就绪条目，等着用户在加工区**手工核对**
 // （补手稿 / 确认分区与标签 / 或先跑一次 AI 提取要点）。
-const manualTitle = computed(() => {
-  const list = manualQueue.value || []
-  const hasRawReady = list.some((i) => i.status === 'raw_ready')
-  const hasProblem = list.some((i) => i.status !== 'raw_ready')
-  if (hasRawReady && hasProblem) return '待手核 · 含异常'
-  if (hasRawReady) return '待手核'
-  return '需人工处理'
-})
 async function loadQueue() {
   loading.value = true
   try {
@@ -405,60 +423,25 @@ onMounted(async () => {
 <template>
   <div>
     <div class="proc-col">
-      <!-- ============ 上：待加工工作区（内部横向排） ============ -->
-      <div class="card">
-        <div class="card-title">
-          <span>≡</span> 待加工
-          <span class="badge accent">{{ queue.length }}</span>
-          <div class="spacer" style="flex:1"></div>
-          <button class="btn ghost sm" @click="loadQueue">刷新</button>
-        </div>
+      <!--
+        v37：上方的「待加工」+「待手核」改成**采集区同款状态条**。
 
-        <!-- 待加工条目：横向排（纵向区块、内部横排） -->
-        <div class="queue-strip">
-          <span
-            v-for="item in queue"
-            :key="item.id"
-            class="queue-chip"
-            :class="{ active: current?.item?.id === item.id }"
-            :title="item.title || ''"
-            @click="selectItem(item.id)"
-          >
-            <span
-              class="platform-dot"
-              :style="{ background: platformOf(item.platform).color }"
-            ></span>
-            {{ item.title || '（无标题）' }}
-          </span>
-        </div>
+        用户："加工区的待加工和待手核参考采集区的任务状态改进，窗口大小也要相同。"
+        原来这里是两张独立的 card（待加工一张、需人工处理一张），样式和采集区
+        完全不是一回事，切页面视觉上跳。
 
-        <template v-if="manualQueue.length">
-          <div class="card-title" style="margin-top:14px">
-            <span>✍️</span> {{ manualTitle }}
-            <span class="badge warn">{{ manualQueue.length }}</span>
-          </div>
-          <div class="queue-strip">
-            <span
-              v-for="item in manualQueue"
-              :key="item.id"
-              class="queue-chip warn"
-              :title="item.title || ''"
-              @click="selectItem(item.id)"
-            >
-              <span
-                class="platform-dot"
-                :style="{ background: platformOf(item.platform).color }"
-              ></span>
-              {{ item.title || '（无标题）' }}
-            </span>
-          </div>
-        </template>
-
-        <div v-if="!queue.length && !loading" class="empty" style="padding:24px 8px">
-          <div class="icon">✓</div>
-          <div>没有待加工的素材</div>
-        </div>
-      </div>
+        现在直接复用 StatusStrip（同一个组件 → 同一套 padding/字号/圆角），
+        两行分居上下，整条高度由 main.css 的 `--strip-min-h` 统一控制
+        （与采集区的条同高），切页面不会跳。
+      -->
+      <StatusStrip
+        :groups="queueGroups"
+        title="加工队列"
+        :show-all="false"
+        :per-group="8"
+        class="strip-top"
+        @select="pickQueue"
+      />
 
       <!-- ============ 下：核准（内容区自己滚，页面框架不滚） ============ -->
       <div class="scroll-col">
@@ -759,6 +742,13 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+/* 队列条不参与拉伸（下面核准区吃剩余高度） */
+.strip-top {
+  flex: 0 0 auto;
+  padding-bottom: 4px;
 }
 
 /* 待加工条目：横向排（纵向区块、内部横排） */

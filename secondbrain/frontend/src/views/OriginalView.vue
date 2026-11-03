@@ -7,16 +7,8 @@
  * - 产出 C 层笔记
  */
 import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
-import { notesApi } from '../api/client'
+import { notesApi, noteTemplatesApi } from '../api/client'
 import { loadDraft, clearDraft } from '../utils/draft'
-// **必须引入 Vditor 的样式**（v35 修）。
-// 坑：从接入 Vditor 起就一直漏了这句。Javascript 能跑、DOM 能建、
-// setValue 也能写进去（所以测试一直"通过"），但没有 CSS 的编辑器
-// 是**裸 DOM** —— 工具栏图标按原始尺寸撑成巨图，用户看到的是
-// 一张笑脸 + 超大的 B / T 图标，完全没法编辑。
-// 教训：DOM 断言（editable=True / toolbar=True）证明不了"能用"，
-// 视觉类组件必须截图看。
-import 'vditor/dist/index.css'
 // **必须引入 Vditor 的样式**（v35 修）。
 // 坑：从接入 Vditor 起就一直漏了这句。Javascript 能跑、DOM 能建、
 // setValue 也能写进去（所以测试一直"通过"），但没有 CSS 的编辑器
@@ -39,199 +31,51 @@ let editor = null
 let editorReady = null
 let inspirationTimer = null
 
-// 空数据模板（v35：换成**兵哥库「我的知识库」的 B 层标准格式**）
+// 空数据模板：**从后端读**（v37）。
 //
-// 依据用户桌面 `兵哥知识库管理系统309/我的知识库/规则模板/` 的实际规范：
-//   知识提炼/   B层，文件名「一句话总结_YYYYMMDDHHMMSS.md」
-//              字段：type / 分类 / 原始链接 / 作者
-//              正文：# 一句话总结 → 关键词 → 摘要(≤120字) → 详细内容(≥600字) → 双向链接
-//   知识聚合/   C层，按专题，人工写，用 [[B层笔记]] 引用
-//   日记/       Daily Note
-//   规则模板/   D层，流程与提示词
+// 之前这 6 个模板硬编码在这里（知识提炼 / 知识聚合 / 日记 / 周回顾 /
+// 规则模板 / 基本概念），想加一个得改代码重新打包。
+// 用户："原创区的模板可在管理区添加" → 现在落库，管理区增删改，这里只读。
 //
-// 约定：
-//   · **不写 YAML frontmatter** —— 后端 create_note 会自己生成
-//     （title/type/tags/partitions/created），正文再写一段 --- 会变成双重
-//     frontmatter，Obsidian 打开就不认了。所以这里的「字段」用列表写。
-//   · 占位符 `{{date}}` `{{time}}` `{{title}}`，应用模板时替换（见 fillPlaceholders）。
+// 注意与「解析模板」的区别：
+//   解析模板（/api/workbench/templates）是给 **AI** 的提示词；
+//   创作模板（/api/note-templates）是给 **人** 的 Markdown 骨架。
+//
+// 约定（历史上踩过的坑，模板正文照此写）：
+//   · **不写 YAML frontmatter** —— 后端 `notes_service.create` 会自己生成
+//     （title/type/tags/partitions/created），正文再写一段 --- 就成双重
+//     frontmatter，Obsidian 打不开。
+//   · 占位符 `{{date}}` `{{time}}` `{{title}}` 由 fillPlaceholders 替换。
 //   · `[[双链]]` 会被后端抽成 citations。
-const templates = [
-  {
-    id: 'distill',
-    name: '知识提炼',
-    desc: 'B层标准格式：一句话总结 + 关键词 + 摘要 + ≥600字详细内容',
-    sections: `# {{title}}
+const templates = ref([])
+const templatesError = ref('')
 
-- 分类：
-- 原始链接：
-- 作者：
-
-**关键词**：
-
-**摘要**：
-
-## 详细内容
-
-
-## 逻辑树
-
-- 主论点一
-  - 支撑论据
-- 主论点二
-
-## 双向链接
-- [[ ]]
-`,
-    suggest_tags: ['提炼'],
-    suggest_partition: ''
-  },
-  {
-    id: 'aggregate',
-    name: '知识聚合',
-    desc: 'C层：按专题整合多篇提炼笔记，用它自己的话写',
-    sections: `# {{title}}
-
-- 专题：
-- 更新：{{date}}
-
-## 这个专题在讲什么
-
-
-## 相关提炼笔记
-- [[ ]]
-
-## 我的整合
-
-
-## 结论 / 可复用的东西
-
-`,
-    suggest_tags: ['聚合'],
-    suggest_partition: ''
-  },
-  {
-    id: 'daily',
-    name: '日记',
-    desc: 'Daily Note：当日要做的 + 记录 + 随想',
-    sections: `# {{date}}
-
-## 今天要做的
-- [ ] 
-
-## 记录
-
-
-## 随想
-
-
-## 今天关联到
-- [[ ]]
-`,
-    suggest_tags: ['日记'],
-    suggest_partition: ''
-  },
-  {
-    id: 'weekly',
-    name: '周回顾',
-    desc: '一周复盘：做成什么、卡在哪、下周重点',
-    sections: `# {{date}} 周回顾
-
-## 本周做成的事
-
-
-## 卡住的地方
-
-
-## 学到的东西
-
-
-## 下周最重要的一件事
-- [ ] 
-
-## 本周笔记
-- [[ ]]
-`,
-    suggest_tags: ['复盘'],
-    suggest_partition: ''
-  },
-  {
-    id: 'template-note',
-    name: '规则模板',
-    desc: 'D层：流程规范 / 提示词模板 / 操作手册',
-    sections: `# {{title}}
-
-- 适用场景：
-- 更新：{{date}}
-
-## 规则 / 步骤
-
-1. 
-2. 
-
-## 注意事项
-
-`,
-    suggest_tags: ['模板'],
-    suggest_partition: ''
-  },
-  {
-    // v36：参考用户库里 `Systems666/ChaoNaoKu/基本概念.md` 的**常用部分**。
-    // 那份笔记是 Obsidian 语法速查（属性 / 标题 / 文本 / 格式四段），
-    // 平时写东西要对着抄，所以做成模板 —— 点一下就把速查表铺进编辑器，
-    // 边写边照。
-    //
-    // 只挑了**日常真会用到**的：属性、1~3 级标题、加粗/斜体/标黄/删除线、
-    // 双链/别名链接、无序/有序/打卡列表、分隔线。
-    // 表格那一段是原笔记没有的（它用空格对齐演示），这里换成 Markdown 表格，
-    // 预览里看得更清楚。
-    id: 'cheatsheet',
-    name: '基本概念',
-    desc: 'Obsidian 语法速查（参考 ChaoNaoKu/基本概念.md 的常用部分）',
-    sections: `# {{title}}
-
-> 速查表：左边是写法，右边是效果。点「源码」看原文照抄。
-
-## 笔记属性
-
-放在**文件开头**，三个减号包起来（本库由系统自动生成，手写会重复，别加）。
-可用字段：\`aliases\`（别名，可多个）、\`tags\`（标签）、\`cssclasses\`（样式）、
-以及任意自定义字段（文本 / 时间 / 数字 / 列表）。
-
-## 标题
-
-\`# 一级\` → 一级（本行上面那个就是）
-
-\`## 二级\`、\`### 三级\` …… 最多六级。**井号后面必须跟一个空格**。
-
-## 文本
-
-| 写法 | 效果 |
-|---|---|
-| \`*斜体*\` | *斜体* |
-| \`**加粗**\` | **加粗** |
-| \`***又粗又斜***\` | ***又粗又斜*** |
-| \`==标黄==\` | ==标黄== |
-| \`~~划掉~~\` | ~~划掉~~ |
-| \`[[本名]]\` | [[本名]]（双链） |
-| \`[别名](本名)\` | [别名](本名) |
-
-## 格式
-
-- 无序列表：\`- 空格\`
-  - 缩进两个空格就是下一级
-1. 有序列表：\`1. 空格\`
-2. 自动接号
-- [ ] 打卡列表：\`- [ ] 空格\`
-- [x] 打完勾：\`- [x]\`
-
-\`---\` 单独一行 = 分隔线：
-
----
-`,
-    suggest_tags: [],
-    suggest_partition: ''
-  }
+/** 拿不到后端时的兜底：至少能写空白页（不阻塞创作）。 */
+const FALLBACK_TEMPLATES = [
+  { id: 'blank', name: '空白页', desc: '', sections: '', suggest_tags: [], suggest_partition: '' }
 ]
+
+async function loadTemplates() {
+  try {
+    const r = await noteTemplatesApi.list()
+    const list = (r.templates || []).map((t) => ({
+      id: t.id,
+      name: t.name,
+      desc: t.description || '',
+      sections: t.body || '',
+      suggest_tags: t.suggest_tags || [],
+      suggest_partition: t.suggest_partition || ''
+    }))
+    // 管理区把模板全删了也给个空白页兜底，否则按钮区空着没法写
+    templates.value = list.length
+      ? [...list, ...FALLBACK_TEMPLATES]
+      : [...FALLBACK_TEMPLATES]
+    templatesError.value = ''
+  } catch (e) {
+    templates.value = [...FALLBACK_TEMPLATES]
+    templatesError.value = '模板加载失败（' + (e.message || e) + '），先给个空白页。'
+  }
+}
 
 /**
  * 替换 Obsidian 占位符。
@@ -433,6 +277,7 @@ function addDraftTag(event) {
 watch(draftTitle, scheduleInspiration)
 
 onMounted(() => {
+  loadTemplates()
   ensureEditor().catch(() => {
     /* 已在 setEditorValue 里提示 */
   })

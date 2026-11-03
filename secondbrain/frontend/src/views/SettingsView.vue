@@ -1,14 +1,28 @@
 <script setup>
 /**
- * 设置页：Provider、vault、LAN、索引重建、prompt 模板、适配器能力、关机。
+ * 设置面板：Provider / 密钥 / Vault / 索引 / 语音转写 / 网络 / 自启 / 服务。
+ *
+ * v37：**已被「管理区」吸收**（用户："管理区改进完和设置合并再改进"）。
+ * 现在它既可以被 `/settings` 单独使用，也可以被管理区按组嵌入：
+ *   <SettingsView embedded group="ai" />
+ * 嵌入时不再画自己的分组 tab，其余逻辑完全不变 ——
+ * 这样不用把 500 行界面复制到管理区里，避免两份实现走偏。
  */
-import { ref, onMounted, inject, watch } from 'vue'
+import { ref, computed, onMounted, inject, watch } from 'vue'
 import { settingsApi, setToken } from '../api/client'
+
+const props = defineProps({
+  /** 被管理区嵌入时 true：隐藏自己的分组 tab */
+  embedded: { type: Boolean, default: false },
+  /** 外部指定的分组：ai / storage / system；空 = 用自己的 tab 状态 */
+  group: { type: String, default: '' }
+})
 
 const toast = inject('toast')
 const refreshSignal = inject('refreshSignal')
-// 分组 Tab（与管理区同款交互：同页切换）
+// 分组 Tab（单独使用时生效；被嵌入时由外部 group 决定）
 const group = ref('ai')
+const activeGroup = computed(() => props.group || group.value)
 
 const settings = ref(null)
 const providers = ref(null)
@@ -266,8 +280,9 @@ onMounted(load)
     </div>
 
     <template v-else>
-      <!-- 分组 Tab：与管理区同款（同页切换，不做长滚动） -->
-      <div class="tabs" style="margin-bottom:14px">
+      <!-- 分组 Tab：与管理区同款（同页切换，不做长滚动）。
+           被管理区嵌入时由外层 tab 控制分组，这里不重复画一排。 -->
+      <div v-if="!embedded" class="tabs" style="margin-bottom:14px">
         <button class="tab" :class="{ active: group === 'ai' }" @click="group = 'ai'">
           AI
         </button>
@@ -280,7 +295,7 @@ onMounted(load)
       </div>
 
       <!-- ===== AI 组 ===== -->
-      <template v-if="group === 'ai'">
+      <template v-if="activeGroup === 'ai'">
       <!-- Provider -->
       <div class="card">
         <div class="card-title"><span>🤖</span> AI Provider</div>
@@ -400,7 +415,7 @@ onMounted(load)
       </template>
 
       <!-- ===== 存储组 ===== -->
-      <template v-if="group === 'storage'">
+      <template v-if="activeGroup === 'storage'">
       <!-- Vault -->
       <div class="card">
         <div class="card-title"><span>📁</span> Vault 目录</div>
@@ -466,7 +481,7 @@ onMounted(load)
       </template>
 
       <!-- ===== 系统组 ===== -->
-      <template v-if="group === 'system'">
+      <template v-if="activeGroup === 'system'">
       <!-- 网络 -->
       <div class="card">
         <div class="card-title"><span>🌐</span> 网络</div>

@@ -45,10 +45,9 @@ def info(msg: str) -> None:
 PAGES: list[tuple[str, str, list[str]]] = [
     ("/", "首页", [".tabs .tab", ".btn", ".check-chip", ".tree-toggle"]),
     ("/workbench", "采集区", [".btn", ".check-chip"]),
-    ("/process", "加工区", [".btn", ".check-chip", ".tree-toggle", ".queue-chip"]),
+    ("/process", "加工区", [".btn", ".check-chip", ".tree-toggle", ".strip-item"]),
     ("/original", "原创区", [".btn", ".check-chip"]),
     ("/manage", "管理区", [".tabs .tab", ".btn"]),
-    ("/settings", "设置", [".tabs .tab", ".btn"]),
     ("/status", "状态", [".tabs .tab", ".btn"]),
 ]
 
@@ -157,7 +156,7 @@ async def main(base: str) -> int:
         # 专项：管理区「平台能力」Tab —— 历史上有 undefined 引用
         print("\n── 专项：管理区各 Tab 逐一渲染 ──")
         await b.goto(f"{base}/manage", settle=1.8)
-        for tab in ("分区树", "标签", "解析模板", "Prompt", "维护与诊断", "平台能力"):
+        for tab in ("分区与标签", "解析模板", "创作模板", "AI 与密钥", "采集与存储", "维护与系统"):
             b.console_errors.clear()
             b.page_errors.clear()
             await b.click_text(".tabs .tab", tab)

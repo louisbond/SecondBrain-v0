@@ -149,6 +149,28 @@ CREATE TABLE IF NOT EXISTS parse_templates (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 创作模板：原创区"空模板"的骨架（v37：从硬编码搬到库里，管理区可增删改）
+-- 与 parse_templates 的区别：这个是给**人**看的 Markdown 骨架，
+-- 那个是给**AI**看的提示词。别加错表。
+CREATE TABLE IF NOT EXISTS note_templates (
+    id INTEGER PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    suggest_tags TEXT DEFAULT '',        -- 逗号分隔
+    suggest_partition TEXT DEFAULT '',
+    sort_order INTEGER DEFAULT 0,
+    source TEXT DEFAULT 'manual',        -- manual / builtin
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 用户删掉的创作模板（防"删了又被播种回来"）
+CREATE TABLE IF NOT EXISTS deleted_note_templates (
+    name TEXT PRIMARY KEY,
+    deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
     title, summary, manuscript, body, tags,
     level UNINDEXED, note_path UNINDEXED, snippet_src UNINDEXED,

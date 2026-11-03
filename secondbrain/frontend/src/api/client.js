@@ -300,6 +300,18 @@ export const workbenchApi = {
     api.del(`/api/workbench/items/${itemId}/screenshots/${index}`)
 }
 
+/**
+ * 创作模板（原创区「空模板」）——v37 从硬编码搬到库里，管理区可增删改。
+ * 别和 workbenchApi.templates()（解析模板，给 AI 的提示词）搞混。
+ */
+export const noteTemplatesApi = {
+  list: () => api.get('/api/note-templates'),
+  create: (payload) => api.post('/api/note-templates', payload),
+  update: (id, payload) => api.put(`/api/note-templates/${id}`, payload),
+  remove: (id) => api.del(`/api/note-templates/${id}`),
+  restoreDefaults: () => api.post('/api/note-templates/restore-defaults')
+}
+
 export const partitionsApi = {
   list: () => api.get('/api/partitions'),
   tree: () => api.get('/api/partitions/tree'),
