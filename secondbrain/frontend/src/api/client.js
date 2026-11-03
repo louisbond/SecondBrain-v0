@@ -141,8 +141,19 @@ export const healthApi = {
 
 export const collectApi = {
   parse: (text) => api.post('/api/collect/parse', { text }),
-  submit: (entries, forceSimilar = false) =>
-    api.post('/api/collect/submit', { entries, force_similar: forceSimilar }),
+  /**
+   * 提交采集条目。
+   *
+   * 参数是**整个请求体**，字段与后端 SubmitRequest 一一对应
+   * （entries / force_similar）—— 调用方直接透传，不要在这里再包一层。
+   *
+   * 坑：早先签名是 `submit(entries, forceSimilar)`，
+   * 而调用方传了 `{entries: [...]}` → 请求体变成
+   * `{entries: {entries: [...]}}` → 后端 422「Input should be a valid list」。
+   * 采集区入库因此**从来没成功过**，且前端 catch 到 422 只弹了
+   * 一句看不懂的提示。
+   */
+  submit: (payload) => api.post('/api/collect/submit', payload),
   quickNote: (text, title) => api.post('/api/collect/quick-note', { text, title }),
   stats: () => api.get('/api/collect/stats')
 }

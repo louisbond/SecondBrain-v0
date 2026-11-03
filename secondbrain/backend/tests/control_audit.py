@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -59,6 +60,9 @@ DANGEROUS_TEXT = [
     "清理", "备份", "注册开机自启", "注销开机自启",
     "设置为接通电源时不睡眠", "恢复主链", "切换",
     "跳过本条", "确认入库", "插入配图", "重新分析",
+    # 「入库」会真的提交采集任务（写 items 表），
+    # 只在下面「采集区入库链路」专项里显式点，不进通用点击循环。
+    "入库",
 ]
 
 
@@ -257,6 +261,103 @@ async def main(base: str) -> int:
             not pending_checked,
             f"已勾选 {[c['text'] for c in pending_checked][:5]}",
         )
+
+        # 专项：采集区「入库」必须真的入库（v30 踩过：payload 被包双层 → 422）
+        # 回归背景：client.js 的 submit(entries, forceSimilar) 与调用方
+        # 传 {entries:[...]} 不匹配 → 请求体变成 {entries:{entries:[...]}}
+        # → 后端 422「Input should be a valid list」→ 采集区**从来没成功过**，
+        # 且 5 个测试套件全绿（它们只打后端，不碰前端 payload）。
+        print("\n── 专项：采集区入库链路 ──")
+        await b.goto(f"{base}/workbench", settle=2.0)
+
+        # 装拦截器，记录 submit 请求的真实 body 与响应
+        await b.eval(
+            """(() => {
+              window.__sbSubmit = [];
+              const of = window.fetch;
+              window.fetch = async function (...args) {
+                const url = String(args[0] && args[0].url ? args[0].url : args[0]);
+                const opt = args[1] || {};
+                const resp = await of.apply(this, args);
+                if (url.includes('/api/collect/submit')) {
+                  const clone = resp.clone();
+                  window.__sbSubmit.push({
+                    body: opt.body || null,
+                    status: resp.status,
+                    resp: await clone.text().catch(() => '')
+                  });
+                }
+                return resp;
+              };
+              return true;
+            })()"""
+        )
+
+        # 往 textarea 塞一条带链接的分享文案
+        await b.eval(
+            """(() => {
+              const ta = document.querySelector('.content textarea');
+              if (!ta) return false;
+              const setter = Object.getOwnPropertyDescriptor(
+                window.HTMLTextAreaElement.prototype, 'value').set;
+              setter.call(ta, 'https://www.bilibili.com/video/BV1CQso6cE8h 采集区入库链路回归测试');
+              ta.dispatchEvent(new Event('input', {bubbles:true}));
+              return true;
+            })()"""
+        )
+        await asyncio.sleep(0.5)
+        await b.click_text(".content .btn", "智能解析")
+        await asyncio.sleep(1.8)
+
+        before = await b.eval(
+            """(() => {
+              const t = document.querySelector('.content')?.innerText || '';
+              const m = t.match(/入库（(\\d+)）/);
+              return m ? Number(m[1]) : 0;
+            })()"""
+        )
+        if not before:
+            check("采集区解析出可入库条目", False, "解析后「入库（N）」仍是 0")
+        else:
+            check("采集区解析出可入库条目", True, f"入库（{before}）")
+            b.page_errors.clear()
+            b.console_errors.clear()
+            await b.click_text(".content .btn", "入库")
+            await asyncio.sleep(2.5)
+
+            reqs = await b.eval("window.__sbSubmit || []")
+            if not reqs:
+                check("采集区入库发出了请求", False, "没有发出 /api/collect/submit")
+            else:
+                rq = reqs[-1]
+                try:
+                    payload = json.loads(rq["body"] or "{}")
+                except Exception:
+                    payload = {}
+                ent = payload.get("entries")
+                check(
+                    "采集区入库请求体格式正确（entries 是数组）",
+                    isinstance(ent, list),
+                    f"entries 类型={type(ent).__name__}；body={str(rq['body'])[:120]}",
+                )
+                check(
+                    "采集区入库返回 2xx",
+                    200 <= int(rq["status"]) < 300,
+                    f"HTTP {rq['status']}：{str(rq['resp'])[:150]}",
+                )
+                # 入库后队列里应多出一条任务
+                queued = await b.eval(
+                    """(() => {
+                      const t = document.querySelector('.content')?.innerText || '';
+                      const m = t.match(/共\\s*(\\d+)\\s*条/);
+                      return m ? Number(m[1]) : -1;
+                    })()"""
+                )
+                check(
+                    "采集区入库后队列出现新任务",
+                    queued > 0,
+                    f"任务状态「共 N 条」= {queued}",
+                )
 
     print("\n" + "=" * 60)
     print(f"通过 {len(PASS)} 项，失败 {len(FAIL)} 项")

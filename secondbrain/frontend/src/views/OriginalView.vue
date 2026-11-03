@@ -212,7 +212,10 @@ async function saveDraftNote() {
   try {
     const res = await notesApi.create({
       title: draftTitle.value.trim(),
-      content: body,
+      // 字段名必须是 body —— 后端 CreateNoteRequest.body。
+      // 之前写的是 content，后端不认（body 默认 ""），
+      // 正文被静默丢弃，存出来的 md 只有 frontmatter 没有正文。
+      body,
       tags: draftTags.value,
       partitions: []
     })
