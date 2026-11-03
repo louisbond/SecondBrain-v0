@@ -259,7 +259,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div>
+  <div class="settings-page">
     <div v-if="!settings" class="empty">
       <div class="icon"><span class="spin">◌</span></div>
       <div>加载中……</div>
@@ -543,6 +543,20 @@ onMounted(load)
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
   max-height: 176px;
+  overflow-y: auto;
+}
+
+/* v35：设置页也填满窗口 */
+.settings-page {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* v35：设置页也填满窗口 */
+.settings-page {
+  height: 100%;
+  min-height: 0;
   overflow-y: auto;
 }
 </style>

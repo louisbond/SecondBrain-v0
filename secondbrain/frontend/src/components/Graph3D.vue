@@ -11,6 +11,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 const props = defineProps({
   nodes: { type: Array, default: () => [] },
   edges: { type: Array, default: () => [] },
+  // height=0 表示「撑满父容器」（父容器需要有确定高度）
   height: { type: Number, default: 520 }
 })
 const emit = defineEmits(['select'])
@@ -374,7 +375,7 @@ defineExpose({ resetView })
 </script>
 
 <template>
-  <div class="graph3d" :style="{ height: height + 'px' }">
+  <div class="graph3d" :style="height > 0 ? { height: height + 'px' } : { height: '100%' }">
     <canvas
       ref="canvasRef"
       @pointerdown="onPointerDown"

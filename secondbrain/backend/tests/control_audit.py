@@ -208,9 +208,9 @@ async def main(base: str) -> int:
             (b.page_errors[0][:150] if b.page_errors else ""),
         )
 
-        # 点「卡片笔记」模板（Obsidian 标准模板集）→ 骨架必须真的写进编辑器
+        # 点「知识提炼」模板（兵哥库 B 层标准格式）→ 骨架必须真的写进编辑器
         b.page_errors.clear()
-        await b.click_text(".content .btn", "卡片笔记")
+        await b.click_text(".content .btn", "知识提炼")
         await asyncio.sleep(2.0)
         sv_text = await b.eval(
             """(() => {
@@ -224,7 +224,7 @@ async def main(base: str) -> int:
         check(
             "原创区模板能写入编辑器",
             # 卡片笔记模板的第一节标题（Obsidian Zettelkasten 惯例）
-            "一句话观点" in sv_text,
+            "详细内容" in sv_text,
             f"编辑器内容: {sv_text[:70]!r}",
         )
         check(
@@ -238,22 +238,36 @@ async def main(base: str) -> int:
             (b.page_errors[0][:150] if b.page_errors else ""),
         )
 
-        # 专项：首页回顾卡片必须有真实内容（曾恒为空）
-        print("\n── 专项：首页回顾卡片 ──")
+        # 专项：首页去掉「今日回顾」后，搜索+图谱要填满视口（v35）
+        print("\n── 专项：首页填满视口 ──")
         b.page_errors.clear()
         await b.goto(f"{base}/", settle=2.2)
-        recap = await b.eval(
+        home = await b.eval(
             """(() => {
-              const c = [...document.querySelectorAll('.content .card')]
-                .find(x => (x.innerText||'').includes('今日回顾'));
-              return c ? c.innerText.trim().replace(/\\n+/g, ' | ') : '(没找到)';
+              const c = document.querySelector('.content');
+              const g = document.querySelector('.home-graph');
+              return {
+                noRecap: !(c && c.innerText.includes('今日回顾')),
+                contentH: c ? Math.round(c.getBoundingClientRect().height) : -1,
+                graphH: g ? Math.round(g.getBoundingClientRect().height) : -1,
+                scrollH: c ? c.scrollHeight : -1
+              };
             })()"""
         )
         check(
-            "首页回顾卡片有内容",
-            # v33：用户要求首页保持「今日回顾」，周回顾移到侧边栏
-            "昨日采集" in recap and "待补手稿" in recap,
-            recap[:110],
+            "首页已去掉今日回顾",
+            home["noRecap"],
+            str(home),
+        )
+        check(
+            "首页正好填满视口（无多余滚动）",
+            home["contentH"] > 0 and home["scrollH"] <= home["contentH"] + 2,
+            f"contentH={home['contentH']} scrollH={home['scrollH']}",
+        )
+        check(
+            "知识图谱吃掉剩余高度",
+            home["graphH"] > 200,
+            f"图谱高 {home['graphH']}px",
         )
 
         # 专项：加工区「待定标签」默认不应全勾选

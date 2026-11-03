@@ -325,16 +325,13 @@ onUnmounted(() => {
       <StatusStrip
         :items="states"
         :stats="stats"
-        :per-group="2"
+        :per-group="8"
         class="strip-top"
         @select="pickTask"
       />
 
-      <!-- v33：采集与解析**左右并列**（用户：解析工作区改为解析，与采集并列）。
-           原来上下堆叠，采集卡占满一整行宽度但只用到一个文本框，
-           解析区被压到下面还得滚 —— 并列之后两边都看得到。 -->
-      <div class="wb-split">
-        <div class="card card-compact wb-pane">
+      <!-- 采集在上、解析在下（v35：用户说解析好像没作用，合并到采集下方） -->
+      <div class="card card-compact">
           <div class="card-title">
             <span>⇪</span> 采集
             <span class="dim" style="font-weight:400;font-size:11.5px">
@@ -413,11 +410,13 @@ onUnmounted(() => {
               <button class="btn ghost sm" @click.stop="removeItem(i)">×</button>
             </div>
           </div>
-        </div>
+      </div>
 
-      <!-- ==================== 右：解析 ==================== -->
-      <!-- v33：与「采集」并列（不再叫"解析工作区"）。 -->
-        <div class="wb-scroll wb-pane">
+      <!-- ==================== 下：解析（含配图） ==================== -->
+      <!-- v35：解析从右栏挪到**采集下方**（用户：解析好像没作用，合并到采集下方）。
+           配图也并进同一个卡片（用户：配图减少面积，和转写合并）——
+           原来配图单独占一张卡，输入框还占两行，纯浪费高度。 -->
+      <div class="wb-scroll">
           <div v-if="!current" class="card empty">
             <div class="icon">▤</div>
             <div>选一条任务开始解析</div>
@@ -465,7 +464,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- 原文 / 字幕 / 转写 -->
+          <!-- 原文 / 转写（v35：配图并进这张卡，不再单独占一张） -->
           <div class="card">
             <div class="card-title">
               <span>📄</span> {{ current.asr ? '语音转写全文' : '原始字幕 / 正文' }}
@@ -475,45 +474,25 @@ onUnmounted(() => {
             </div>
             <pre
               class="mono"
-              style="white-space:pre-wrap;max-height:170px;overflow:auto;margin:0"
+              style="white-space:pre-wrap;max-height:200px;overflow:auto;margin:0"
             >{{ content?.body || '（还没有原文）' }}</pre>
-          </div>
 
-          <!-- 配图 -->
-          <div class="card">
-            <div class="card-title">
-              <span>🖼</span> 配图
-              <span class="badge">{{ shots.length }}</span>
-            </div>
-            <!-- v33：采集/解析并列后这一栏只有 ~570px，
-                 配图这几个输入框必须能换行，否则挤成一团。 -->
-            <div class="shot-form">
+            <!-- 配图工具栏：一行放下，不再单独占一张卡 -->
+            <div class="shot-bar">
+              <span class="shot-label">🖼 配图 {{ shots.length }}</span>
               <label class="row" style="margin:0;flex:0 0 auto">
-                位置
-                <input
-                  v-model.number="shotPosition"
-                  type="number"
-                  min="0"
-                  style="width:64px"
-                />
+                第
+                <input v-model.number="shotPosition" type="number" min="0" style="width:50px" />
                 段
               </label>
-              <input
-                v-model="shotCaption"
-                type="text"
-                placeholder="图注（可选）"
-              />
-              <input
-                v-model="shotUrl"
-                type="text"
-                placeholder="图片地址，或选文件"
-              />
-              <input type="file" accept="image/*" @change="onPickFile" />
-              <button class="btn" :disabled="shotBusy" @click="insertShot">
-                {{ shotBusy ? '插入中…' : '插入配图' }}
+              <input v-model="shotCaption" type="text" placeholder="图注" class="shot-in" />
+              <input v-model="shotUrl" type="text" placeholder="图片地址 / 选文件" class="shot-in" />
+              <input type="file" accept="image/*" class="shot-file" @change="onPickFile" />
+              <button class="btn sm" :disabled="shotBusy" @click="insertShot">
+                {{ shotBusy ? '插入中…' : '插入' }}
               </button>
             </div>
-            <div class="row wrap" style="margin-top:8px">
+            <div v-if="shots.length" class="shot-chips">
               <span
                 v-for="(s, i) in shots"
                 :key="i"
@@ -523,12 +502,10 @@ onUnmounted(() => {
               >
                 {{ s }} ×
               </span>
-              <span v-if="!shots.length" class="dim">还没有配图</span>
             </div>
           </div>
 
         </template>
-        </div>
       </div>
     </div>
   </div>
@@ -555,25 +532,12 @@ onUnmounted(() => {
   padding-bottom: 4px;
 }
 
-/* v33：采集 | 解析 左右并列（各占一半），状态条置顶占满整行。
-   原来上下堆叠：采集卡横占一整行只用到一个文本框，解析区被挤到下面还要滚。 */
-.wb-split {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
-}
-.wb-pane {
-  min-height: 0;
-  min-width: 0;
-}
-
-/* 紧凑卡片：采集卡压掉一半高度（用户：采集和解析面积至少减小一半）。
+/* 紧凑卡片：采集卡只占必要高度（用户要求面积减小）。
    卡片内边距 16 → 10，textarea 由 rows=5 降到 rows=2。 */
 .card-compact {
   padding: 10px 14px;
   margin-bottom: 0;
+  flex: 0 0 auto;
 }
 .card-compact :deep(.card-title) {
   margin-bottom: 8px;
@@ -582,22 +546,43 @@ onUnmounted(() => {
   min-height: 46px;
 }
 
-/* 解析侧：内部滚动（原文全文 + 配图加起来会超过一屏）。 */
+/* 解析区：吃掉剩余高度，内部滚动。 */
 .wb-scroll {
+  flex: 1;
+  min-height: 120px;
   overflow-y: auto;
   padding-right: 6px;
 }
 
-/* 配图表单：窄栏里自动换行，每个控件都占满一行宽度 */
-.shot-form {
+/* 配图工具栏（v35：并进转写卡，压成一行）
+   原来配图单独一张卡 + 输入框换两行，白占 ~130px。 */
+.shot-bar {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 8px;
   align-items: center;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
 }
-.shot-form input[type='text'],
-.shot-form input[type='file'] {
-  flex: 1 1 160px;
+.shot-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  flex: 0 0 auto;
+}
+.shot-in {
+  flex: 1 1 130px;
   min-width: 0;
+}
+.shot-file {
+  flex: 0 1 150px;
+  min-width: 0;
+  font-size: 11px;
+}
+.shot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
 }
 </style>

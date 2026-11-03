@@ -2,14 +2,16 @@
 /**
  * 首页：一眼看清整个库。
  *
- * 纵向三块（不再用 Tab 切换）：
+ * 纵向两块，**正好填满一屏**（v35：用户要求去掉「今日回顾」，
+ * 剩下的格子正好填满窗口）：
  *   ① 搜索（上）—— 输入即查，结果内联
- *   ② 图谱（中）—— 3D 知识图谱（布局稳定不乱跳），个人手稿是主节点
- *   ③ 回顾（下）—— 今日该回顾什么
+ *   ② 图谱（下）—— 3D 知识图谱，吃掉剩余高度
+ *
+ * 回顾相关的内容已挪到侧边栏「每周回顾」面板，这一页不再有回顾卡。
  */
 import { ref, computed, onMounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
-import { searchApi, recapApi, notesApi, reviewApi, noteRoute } from '../api/client'
+import { searchApi, notesApi, noteRoute } from '../api/client'
 import Graph3D from '../components/Graph3D.vue'
 
 const toast = inject('toast')
@@ -141,128 +143,21 @@ async function openGraphNode(node) {
 }
 
 // ---------------- 回顾 ----------------
+// （v35：回顾卡片已从首页移除，下面这些状态/函数不再需要）
 // 后端 /api/recap/card 返回的是「计数 + 一条加权未引用旧笔记」，
 // 不是 {title, items[]}——前端原先按后者写，回顾块永远是空的。
-const card = ref(null)
-const needManuscript = ref([])
-const showNeedManuscript = ref(false)
-
-async function loadCard() {
-  try {
-    card.value = await recapApi.card()
-  } catch (e) {
-    card.value = { error: e.message }
-  }
-}
-
-/** 待补手稿清单（已入库但手稿为空的 B 层笔记）。 */
-async function loadNeedManuscript() {
-  try {
-    const data = await reviewApi.needManuscript()
-    needManuscript.value = data.items || []
-  } catch (e) {
-    needManuscript.value = []
-  }
-}
-
-async function toggleNeedManuscript() {
-  showNeedManuscript.value = !showNeedManuscript.value
-  if (showNeedManuscript.value && !needManuscript.value.length) {
-    await loadNeedManuscript()
-  }
-}
 
 onMounted(async () => {
   loadVocab()
-  await Promise.all([loadCard(), loadGraph()])
+  await loadGraph()
 })
 </script>
 
 <template>
   <div class="home-page">
-    <!-- ① 回顾（v33：恢复「今日回顾」——用户说首页的每周回顾去掉，
-         周回顾已挪到侧边栏「本机状态」那块） -->
-    <div class="card">
-      <div class="card-title">
-        <span>◷</span> 今日回顾
-        <div class="spacer" style="flex:1"></div>
-        <button class="btn ghost sm" @click="loadCard">刷新</button>
-      </div>
-      <div v-if="!card" class="dim">加载中…</div>
-      <div v-else-if="card.error" class="alert warn">{{ card.error }}</div>
-      <template v-else>
-        <!-- 采集/创作计数（紧凑单行——首页必须一屏放下） -->
-        <div class="recap-stats">
-          <span>昨日采集 <b>{{ card.collected_yesterday || 0 }}</b></span>
-          <span>本周采集 <b>{{ card.collected_week || 0 }}</b></span>
-          <span>待核准 <b class="accent">{{ card.pending_review || 0 }}</b></span>
-          <span>本周创作 <b>{{ card.created_notes_week || 0 }}</b></span>
-        </div>
 
-        <div class="recap-row" style="margin-top:8px">
-          <!-- 待补手稿（软门槛的提醒 + 补写入口） -->
-          <div
-            class="list-item"
-            style="cursor:pointer"
-            @click="toggleNeedManuscript"
-          >
-            <div class="grow">
-              <div class="title">
-                待补手稿
-                <span class="badge" :class="card.need_manuscript ? 'warn' : 'ok'">
-                  {{ card.need_manuscript || 0 }}
-                </span>
-              </div>
-              <div class="sub">
-                {{
-                  card.need_manuscript
-                    ? '已入库但手稿为空——点这里补写'
-                    : '手稿都补齐了'
-                }}
-              </div>
-            </div>
-            <span class="dim">{{ showNeedManuscript ? '收起' : '▸' }}</span>
-          </div>
-
-          <!-- 加权未引用旧笔记 -->
-          <div
-            v-if="card.unreferenced_note"
-            class="list-item"
-            style="cursor:pointer"
-            @click="openNote(card.unreferenced_note.note_path)"
-          >
-            <div class="grow">
-              <div class="title">{{ card.unreferenced_note.title }}</div>
-              <div class="sub">{{ card.unreferenced_note.reason }}</div>
-            </div>
-          </div>
-          <div v-else class="dim" style="padding:4px">
-            暂时没有需要回顾的内容
-          </div>
-        </div>
-
-        <div v-if="showNeedManuscript" class="recap-row" style="margin-top:6px">
-          <div
-            v-for="(m, i) in needManuscript"
-            :key="i"
-            class="list-item"
-            style="cursor:pointer"
-            @click="openNote(m.note_path)"
-          >
-            <div class="grow">
-              <div class="title">{{ m.title }}</div>
-              <div class="sub">{{ m.created_at || '' }}</div>
-            </div>
-          </div>
-          <div v-if="!needManuscript.length" class="dim" style="padding:4px">
-            没有待补手稿的条目
-          </div>
-        </div>
-      </template>
-    </div>
-
-    <!-- ② 搜索（中，保留：知识库检索） -->
-    <div class="card">
+    <!-- ① 搜索（v35：今日回顾已删，搜索与图谱填满整屏） -->
+    <div class="card home-search">
       <div class="row">
         <input
           v-model="query"
@@ -378,8 +273,8 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- ③ 图谱（下，保留：3D 知识图谱） -->
-    <div class="card">
+    <!-- ② 图谱（吃掉剩余高度） -->
+    <div class="card home-graph">
       <div class="card-title">
         <span>◈</span> 知识图谱
         <span class="dim" style="font-weight:400;font-size:11.5px">
@@ -397,10 +292,10 @@ onMounted(async () => {
       <Graph3D
         :nodes="graph.nodes || []"
         :edges="graph.edges || []"
-        :height="376"
+        :height="0"
         @select="openGraphNode"
       />
-      <div v-if="graphSel" class="alert info" style="margin-top:8px">
+      <div v-if="graphSel" class="alert info graph-sel" style="margin-top:6px">
         已选中：<b>{{ graphSel.note_title || graphSel.label }}</b>
         <span class="dim">
           （{{ graphSel.kind === 'manuscript' ? '个人手稿' : graphSel.kind }}）
@@ -413,10 +308,36 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* v35：首页去掉「今日回顾」后，搜索 + 图谱要**正好填满视口**，
+   不留滚动条也不留空白（用户：剩下的格子正好填满窗口）。 */
 .home-page {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+.home-search {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+  /* 内容少时不出滚动；结果多时自己滚 */
+  max-height: 46%;
+  overflow-y: auto;
+}
+.home-graph {
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* Graph3D 外面的容器（组件根节点）吃掉剩余高度 */
+.home-graph :deep(.graph3d) {
+  flex: 1;
+  min-height: 0;
+}
+.graph-sel {
+  flex: 0 0 auto;
 }
 .filter-panel {
   display: grid;

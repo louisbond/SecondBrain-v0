@@ -105,14 +105,15 @@ const otherTags = computed(() => {
     .filter((name) => !used.has(name))
 })
 
-// 队列分组的标题：v31 采集完成后停在「原文就绪」（raw_ready），
-// 那不是「出错需人工处理」，只是**等你来加工**。分开显示。
+// 队列分组的标题（v35：用户要求「等你加工」改成「待手核」）。
+// raw_ready = 采集完的原文就绪条目，等着用户在加工区**手工核对**
+// （补手稿 / 确认分区与标签 / 或先跑一次 AI 提取要点）。
 const manualTitle = computed(() => {
   const list = manualQueue.value || []
   const hasRawReady = list.some((i) => i.status === 'raw_ready')
   const hasProblem = list.some((i) => i.status !== 'raw_ready')
-  if (hasRawReady && hasProblem) return '待加工与需处理'
-  if (hasRawReady) return '原文就绪，等你加工'
+  if (hasRawReady && hasProblem) return '待手核 · 含异常'
+  if (hasRawReady) return '待手核'
   return '需人工处理'
 })
 async function loadQueue() {

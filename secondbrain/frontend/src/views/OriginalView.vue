@@ -9,6 +9,22 @@
 import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
 import { notesApi } from '../api/client'
 import { loadDraft, clearDraft } from '../utils/draft'
+// **必须引入 Vditor 的样式**（v35 修）。
+// 坑：从接入 Vditor 起就一直漏了这句。Javascript 能跑、DOM 能建、
+// setValue 也能写进去（所以测试一直"通过"），但没有 CSS 的编辑器
+// 是**裸 DOM** —— 工具栏图标按原始尺寸撑成巨图，用户看到的是
+// 一张笑脸 + 超大的 B / T 图标，完全没法编辑。
+// 教训：DOM 断言（editable=True / toolbar=True）证明不了"能用"，
+// 视觉类组件必须截图看。
+import 'vditor/dist/index.css'
+// **必须引入 Vditor 的样式**（v35 修）。
+// 坑：从接入 Vditor 起就一直漏了这句。Javascript 能跑、DOM 能建、
+// setValue 也能写进去（所以测试一直"通过"），但没有 CSS 的编辑器
+// 是**裸 DOM** —— 工具栏图标按原始尺寸撑成巨图，用户看到的是
+// 一张笑脸 + 超大的 B / T 图标，完全没法编辑。
+// 教训：DOM 断言（editable=True / toolbar=True）证明不了"能用"，
+// 视觉类组件必须截图看。
+import 'vditor/dist/index.css'
 
 const toast = inject('toast')
 
@@ -23,22 +39,80 @@ let editor = null
 let editorReady = null
 let inspirationTimer = null
 
-// 空数据模板（v32：换成 Obsidian 标准模板）
+// 空数据模板（v35：换成**兵哥库「我的知识库」的 B 层标准格式**）
 //
-// 依据 Obsidian 生态的通行写法：
+// 依据用户桌面 `兵哥知识库管理系统309/我的知识库/规则模板/` 的实际规范：
+//   知识提炼/   B层，文件名「一句话总结_YYYYMMDDHHMMSS.md」
+//              字段：type / 分类 / 原始链接 / 作者
+//              正文：# 一句话总结 → 关键词 → 摘要(≤120字) → 详细内容(≥600字) → 双向链接
+//   知识聚合/   C层，按专题，人工写，用 [[B层笔记]] 引用
+//   日记/       Daily Note
+//   规则模板/   D层，流程与提示词
+//
+// 约定：
 //   · **不写 YAML frontmatter** —— 后端 create_note 会自己生成
-//     （title/type/tags/partitions/created），正文里再写一段 --- 会变成
-//     双重 frontmatter，Obsidian 打开就不认了。
-//   · 用 Obsidian 的占位符语法 `{{date}}` `{{time}}` `{{title}}`，
-//     应用模板时替换成真实值（见 applyTemplate）。
-//   · 支持 `[[双链]]`：后端会把正文里的 wikilink 抽成 citations。
-//   · 结构照社区惯例（Daily Note / Weekly Review / Zettelkasten /
-//     Book Note / Meeting / MOC / Project）。
+//     （title/type/tags/partitions/created），正文再写一段 --- 会变成双重
+//     frontmatter，Obsidian 打开就不认了。所以这里的「字段」用列表写。
+//   · 占位符 `{{date}}` `{{time}}` `{{title}}`，应用模板时替换（见 fillPlaceholders）。
+//   · `[[双链]]` 会被后端抽成 citations。
 const templates = [
   {
-    id: 'daily-note',
-    name: '每日笔记',
-    desc: 'Obsidian Daily Note 惯例：当日记录 + 待办 + 随想',
+    id: 'distill',
+    name: '知识提炼',
+    desc: 'B层标准格式：一句话总结 + 关键词 + 摘要 + ≥600字详细内容',
+    sections: `# {{title}}
+
+- 分类：
+- 原始链接：
+- 作者：
+
+**关键词**：
+
+**摘要**：
+
+## 详细内容
+
+
+## 逻辑树
+
+- 主论点一
+  - 支撑论据
+- 主论点二
+
+## 双向链接
+- [[ ]]
+`,
+    suggest_tags: ['提炼'],
+    suggest_partition: ''
+  },
+  {
+    id: 'aggregate',
+    name: '知识聚合',
+    desc: 'C层：按专题整合多篇提炼笔记，用它自己的话写',
+    sections: `# {{title}}
+
+- 专题：
+- 更新：{{date}}
+
+## 这个专题在讲什么
+
+
+## 相关提炼笔记
+- [[ ]]
+
+## 我的整合
+
+
+## 结论 / 可复用的东西
+
+`,
+    suggest_tags: ['聚合'],
+    suggest_partition: ''
+  },
+  {
+    id: 'daily',
+    name: '日记',
+    desc: 'Daily Note：当日要做的 + 记录 + 随想',
     sections: `# {{date}}
 
 ## 今天要做的
@@ -50,14 +124,14 @@ const templates = [
 ## 随想
 
 
-## 关联
+## 今天关联到
 - [[ ]]
 `,
     suggest_tags: ['日记'],
     suggest_partition: ''
   },
   {
-    id: 'weekly-review',
+    id: 'weekly',
     name: '周回顾',
     desc: '一周复盘：做成什么、卡在哪、下周重点',
     sections: `# {{date}} 周回顾
@@ -81,127 +155,23 @@ const templates = [
     suggest_partition: ''
   },
   {
-    id: 'zettel',
-    name: '卡片笔记',
-    desc: 'Zettelkasten 永久笔记：一个想法一张卡，用自己的话写',
+    id: 'template-note',
+    name: '规则模板',
+    desc: 'D层：流程规范 / 提示词模板 / 操作手册',
     sections: `# {{title}}
 
-## 一句话观点
+- 适用场景：
+- 更新：{{date}}
 
+## 规则 / 步骤
 
-## 我的论证
-
-
-## 反例与边界
-
-
-## 与哪些笔记相连
-- [[ ]]
-`,
-    suggest_tags: ['卡片'],
-    suggest_partition: ''
-  },
-  {
-    id: 'book-note',
-    name: '读书笔记',
-    desc: '书目元信息 + 触动点 + 行动项',
-    sections: `# 《书名》
-
-- 作者：
-- 读完日期：{{date}}
-- 评分：/10
-
-## 这本书在讲什么
-
-
-## 三个触动点
 1. 
 2. 
-3. 
 
-## 我要改变的
-- [ ] 
-
-## 摘抄
-
-
-## 相关
-- [[ ]]
-`,
-    suggest_tags: ['读书'],
-    suggest_partition: ''
-  },
-  {
-    id: 'meeting',
-    name: '会议记录',
-    desc: '时间地点人 + 结论 + 待办（带负责人）',
-    sections: `# {{date}} 会议
-
-- 参与人：
-- 主题：
-
-## 结论
-
-
-## 待办
-- [ ] （负责人 / 截止日）
-
-## 讨论要点
-
-
-## 关联
-- [[ ]]
-`,
-    suggest_tags: ['会议'],
-    suggest_partition: ''
-  },
-  {
-    id: 'moc',
-    name: '内容地图 MOC',
-    desc: 'Map of Content：把一个主题下的笔记串成索引',
-    sections: `# {{title}} · 内容地图
-
-## 这个主题是什么
-
-
-## 入口笔记
-- [[ ]]
-
-## 分支
-### 
-- [[ ]]
-
-## 待补的空白
+## 注意事项
 
 `,
-    suggest_tags: ['索引'],
-    suggest_partition: ''
-  },
-  {
-    id: 'project',
-    name: '项目笔记',
-    desc: '目标 / 现状 / 下一步 / 风险',
-    sections: `# {{title}}
-
-- 起止：{{date}} →
-- 状态：进行中
-
-## 目标
-
-
-## 现状
-
-
-## 下一步
-- [ ] 
-
-## 风险与依赖
-
-
-## 相关
-- [[ ]]
-`,
-    suggest_tags: ['项目'],
+    suggest_tags: ['模板'],
     suggest_partition: ''
   }
 ]
@@ -267,7 +237,8 @@ function ensureEditor() {
   if (editorReady) return editorReady
   editorReady = import('vditor').then(({ default: Vditor }) => {
     editor = new Vditor(editorEl.value, {
-      height: 460,
+      // v35：撑满剩余高度（父容器 .vditor-host 有确定高度）
+      height: '100%',
       placeholder: '写下你的思考。解析结果、引用建议都可以一键插入。',
       mode: 'sv',
       cache: { enable: false },
@@ -482,14 +453,43 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* v35：原创区也**正好填满窗口**（用户：每个区最好都这样）。
+   编辑器吃掉剩余高度，不再固定 460px 留一片空白。 */
 .compose-page {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+/* v35：外层 card 先撑开（它只有 313px 高，编辑器自然吃不满），
+   再让 card 变成 flex column，编辑器才能 flex:1 吃掉剩余高度。 */
+.compose-page > .card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* v35：外层 card 先撑开（它只有 313px 高，编辑器自然吃不满），
+   再让 card 变成 flex column，编辑器才能 flex:1 吃掉剩余高度。 */
+.compose-page > .card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .vditor-host {
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+/* Vditor 根节点也撑满 */
+.vditor-host :deep(.vditor) {
+  height: 100% !important;
+}
+.vditor-host :deep(.vditor-content) {
+  height: calc(100% - 35px);
 }
 </style>

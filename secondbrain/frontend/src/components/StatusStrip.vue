@@ -174,18 +174,19 @@ onUnmounted(() => {
   font-weight: 650;
 }
 .strip-body {
-  /* v33：四个状态**并行**（各占一格等宽），整行不换行。 */
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px 14px;
-  align-items: start;
+  /* v35：四个状态**同一列纵向排列**（用户：四个状态在同一列）。
+     每行内部是「徽标 + 任务 chip」横排。 */
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  align-items: stretch;
 }
 .strip-group {
   display: flex;
   align-items: center;
   gap: 7px;
   min-width: 0;
-  /* 组内也不换行：任务 chip 横向排，放不下就裁掉（有 +N 兜底） */
+  /* 行内横排，不换行：放不下就裁掉（有 +N 兜底） */
   flex-wrap: nowrap;
 }
 .strip-items {
@@ -208,6 +209,9 @@ onUnmounted(() => {
   font-family: inherit;
   cursor: pointer;
   flex: 0 0 auto;
+  /* 四行对齐：徽标固定宽度，chip 起点才整齐 */
+  min-width: 84px;
+  text-align: center;
 }
 .strip-badge:hover {
   border-color: var(--accent);

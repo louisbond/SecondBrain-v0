@@ -27,7 +27,6 @@ FAILED: list[tuple[str, str]] = []
 PAGE_EXPECTATIONS: dict[str, list[str]] = {
     "/": [
         "知识图谱",
-        "今日回顾",
         "个人手稿",
     ],
     "/workbench": [
@@ -54,9 +53,9 @@ PAGE_EXPECTATIONS: dict[str, list[str]] = {
     "/original": [
         "创作",
         "空模板",
-        # v32：模板换成 Obsidian 标准模板集（每日笔记/周刊/卡片/读书/会议/MOC/项目）
-        "每日笔记",
-        "卡片笔记",
+        # v35：模板换成兵哥库「我的知识库」的 B 层标准格式
+        "知识提炼",
+        "知识聚合",
         "保存为创作笔记",
     ],
     "/manage": [

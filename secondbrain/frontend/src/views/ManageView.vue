@@ -325,8 +325,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
-    <div class="row" style="margin-bottom:14px">
+  <div class="manage-page">
+    <div class="row" style="margin-bottom:14px;flex:0 0 auto">
       <div class="tabs">
         <button class="tab" :class="{ active: section === 'partitions' }" @click="section = 'partitions'">
           分区树
@@ -612,5 +612,39 @@ onMounted(async () => {
 .tree-children {
   border-left: 1px solid var(--line);
   margin-left: 8px;
+}
+
+/* v35：管理区也填满窗口（用户：每个区最好都这样）。
+   原来内容只占 36% 高度，下面一大片空白。 */
+.manage-page {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 各 section 的内容区吃掉剩余高度，卡片内部自己滚 */
+.manage-page > .grid-2,
+.manage-page > .card,
+.manage-page > div:not(.row) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* v35：管理区也填满窗口（用户：每个区最好都这样）。
+   原来内容只占 36% 高度，下面一大片空白。 */
+.manage-page {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 各 section 的内容区吃掉剩余高度，卡片内部自己滚 */
+.manage-page > .grid-2,
+.manage-page > .card,
+.manage-page > div:not(.row) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 </style>
