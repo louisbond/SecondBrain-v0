@@ -72,6 +72,16 @@ function goAll() {
   router.push('/status')
 }
 
+/**
+ * 点某个状态 → 进状态页并**带上该状态的筛选**（v33）。
+ *
+ * 用户：各状态能点击进各自页面。跳过去还要再点一次筛选很蠢，
+ * 所以直接带上 ?filter=done / fail / run / wait。
+ */
+function goFiltered(key) {
+  router.push({ path: '/status', query: { filter: key } })
+}
+
 function pick(item) {
   emit('select', item)
 }
@@ -100,24 +110,40 @@ onUnmounted(() => {
     </div>
 
     <div class="strip-body">
-      <div v-for="g in groups" :key="g.key" class="strip-group" :class="g.cls">
-        <span class="strip-badge" :class="g.cls">
-          {{ g.icon }} {{ g.label }} {{ g.count }}
-        </span>
-        <span
-          v-for="it in g.shown"
-          :key="it.id"
-          class="strip-item"
-          :title="it.title || ''"
-          @click="pick(it)"
+      <!-- v33：四个状态**并行横排**（各占一列，不换行）。
+           点状态徽标 → 进该状态的状态页（带筛选）。
+           点具体任务 → 选中它（采集区联动）。 -->
+      <div
+        v-for="g in groups"
+        :key="g.key"
+        class="strip-group"
+        :class="g.cls"
+      >
+        <button
+          class="strip-badge"
+          :class="g.cls"
+          :title="`查看全部「${g.label}」任务`"
+          @click="goFiltered(g.key)"
         >
-          {{ short(it.title) }}
-        </span>
-        <span
-          v-if="g.count > g.shown.length"
-          class="strip-more"
-          @click="goAll"
-        >+{{ g.count - g.shown.length }}</span>
+          {{ g.icon }} {{ g.label }} {{ g.count }}
+        </button>
+        <div class="strip-items">
+          <span
+            v-for="it in g.shown"
+            :key="it.id"
+            class="strip-item"
+            :title="it.title || ''"
+            @click="pick(it)"
+          >
+            {{ short(it.title) }}
+          </span>
+          <span
+            v-if="g.count > g.shown.length"
+            class="strip-more"
+            :title="`还有 ${g.count - g.shown.length} 条`"
+            @click="goFiltered(g.key)"
+          >+{{ g.count - g.shown.length }}</span>
+        </div>
       </div>
 
       <span v-if="!allItems.length" class="dim" style="font-size:11.5px">
@@ -148,16 +174,28 @@ onUnmounted(() => {
   font-weight: 650;
 }
 .strip-body {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 18px;
-  align-items: flex-start;
+  /* v33：四个状态**并行**（各占一格等宽），整行不换行。 */
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 14px;
+  align-items: start;
 }
 .strip-group {
   display: flex;
   align-items: center;
   gap: 7px;
-  flex-wrap: wrap;
+  min-width: 0;
+  /* 组内也不换行：任务 chip 横向排，放不下就裁掉（有 +N 兜底） */
+  flex-wrap: nowrap;
+}
+.strip-items {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  flex-wrap: nowrap;
 }
 .strip-badge {
   font-size: 12px;
@@ -166,6 +204,14 @@ onUnmounted(() => {
   border: 1px solid var(--line);
   color: var(--text-dim);
   white-space: nowrap;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.strip-badge:hover {
+  border-color: var(--accent);
+  color: var(--text);
 }
 .strip-badge.ok {
   color: var(--ok, #35c48e);
@@ -186,7 +232,10 @@ onUnmounted(() => {
   background: var(--bg-hover);
   color: var(--text-dim);
   cursor: pointer;
-  max-width: 230px;
+  /* 四组并行时每组只有 ~270px，chip 太宽会挤到隔壁组 */
+  max-width: 118px;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -199,5 +248,7 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--accent);
   cursor: pointer;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 </style>

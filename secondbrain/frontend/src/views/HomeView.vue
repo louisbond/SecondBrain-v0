@@ -147,44 +147,11 @@ const card = ref(null)
 const needManuscript = ref([])
 const showNeedManuscript = ref(false)
 
-// ---- 每周回顾（v32）----
-// 用户：一级导航把「首页」换成「每周回顾」。
-// 周报由后端 recap.weekly 生成（纯统计 + 模板渲染，不调 AI，很快），
-// 结果同时落盘到 vault/_reports/YYYY-Www.md。
-const weeklyBusy = ref(false)
-const weeklyReport = ref(null)
-const weeklyError = ref('')
-const showWeeklyBody = ref(false)
-const weekStats = ref({})
-
 async function loadCard() {
   try {
     card.value = await recapApi.card()
   } catch (e) {
     card.value = { error: e.message }
-  }
-}
-
-/** 生成本周周报（幂等：同一天重复点只是重写同一份文件）。 */
-async function makeWeekly() {
-  if (weeklyBusy.value) return
-  weeklyBusy.value = true
-  weeklyError.value = ''
-  try {
-    const r = await recapApi.weekly(0)
-    weeklyReport.value = r
-    weekStats.value = {
-      collected: r.collected,
-      reviewed: r.reviewed,
-      created: r.created
-    }
-    showWeeklyBody.value = true
-    toast('周报已生成', 'success')
-  } catch (e) {
-    weeklyError.value = '生成失败：' + (e.message || e)
-    toast(weeklyError.value, 'error')
-  } finally {
-    weeklyBusy.value = false
   }
 }
 
@@ -213,66 +180,25 @@ onMounted(async () => {
 
 <template>
   <div class="home-page">
-    <!-- ① 每周回顾（v32：一级导航第一项，落地第一眼就该看到本周概况） -->
+    <!-- ① 回顾（v33：恢复「今日回顾」——用户说首页的每周回顾去掉，
+         周回顾已挪到侧边栏「本机状态」那块） -->
     <div class="card">
       <div class="card-title">
-        <span>◷</span> 每周回顾
-        <span class="dim" style="font-weight:400;font-size:11.5px">
-          本周采集 / 入库 / 创作，以及生成的周报
-        </span>
+        <span>◷</span> 今日回顾
         <div class="spacer" style="flex:1"></div>
-        <button
-          class="btn ghost sm"
-          :disabled="weeklyBusy"
-          @click="makeWeekly"
-        >
-          {{ weeklyBusy ? '生成中…' : '生成本周周报' }}
-        </button>
         <button class="btn ghost sm" @click="loadCard">刷新</button>
       </div>
-
-      <!-- 本周统计（优先显示周报数据，没生成过就退回卡片数据） -->
-      <div class="recap-stats">
-        <span>
-          本周采集 <b>{{ weekStats.collected ?? card?.collected_week ?? 0 }}</b>
-        </span>
-        <span>
-          本周入库 <b>{{ weekStats.reviewed ?? 0 }}</b>
-        </span>
-        <span>
-          本周创作 <b>{{ weekStats.created ?? card?.created_notes_week ?? 0 }}</b>
-        </span>
-        <span>
-          待核准 <b class="accent">{{ card?.pending_review || 0 }}</b>
-        </span>
-      </div>
-
-      <!-- 生成的周报正文（可折叠全文） -->
-      <div v-if="weeklyReport" style="margin-top:10px">
-        <div class="row" style="align-items:center;gap:8px">
-          <span class="badge ok">已生成</span>
-          <span class="dim mono" style="font-size:11.5px">
-            {{ weeklyReport.week }} · {{ weeklyReport.week_label || '' }}
-          </span>
-          <div class="spacer" style="flex:1"></div>
-          <button class="btn ghost sm" @click="showWeeklyBody = !showWeeklyBody">
-            {{ showWeeklyBody ? '收起全文' : '展开全文' }}
-          </button>
-        </div>
-        <pre
-          v-if="showWeeklyBody"
-          class="mono weekly-body"
-        >{{ weeklyReport.body || '' }}</pre>
-      </div>
-      <div v-else-if="weeklyError" class="alert warn" style="margin-top:10px">
-        {{ weeklyError }}
-      </div>
-
-      <div v-if="!card" class="dim" style="margin-top:10px">加载中…</div>
-      <div v-else-if="card.error" class="alert warn" style="margin-top:10px">
-        {{ card.error }}
-      </div>
+      <div v-if="!card" class="dim">加载中…</div>
+      <div v-else-if="card.error" class="alert warn">{{ card.error }}</div>
       <template v-else>
+        <!-- 采集/创作计数（紧凑单行——首页必须一屏放下） -->
+        <div class="recap-stats">
+          <span>昨日采集 <b>{{ card.collected_yesterday || 0 }}</b></span>
+          <span>本周采集 <b>{{ card.collected_week || 0 }}</b></span>
+          <span>待核准 <b class="accent">{{ card.pending_review || 0 }}</b></span>
+          <span>本周创作 <b>{{ card.created_notes_week || 0 }}</b></span>
+        </div>
+
         <div class="recap-row" style="margin-top:8px">
           <!-- 待补手稿（软门槛的提醒 + 补写入口） -->
           <div
@@ -563,17 +489,5 @@ onMounted(async () => {
 }
 .recap-stats b.accent {
   color: var(--accent);
-}
-/* 周报正文：等宽 + 限高内滚，避免把首页撑长 */
-.weekly-body {
-  white-space: pre-wrap;
-  max-height: 260px;
-  overflow: auto;
-  margin: 8px 0 0;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--bg-hover);
-  font-size: 12px;
-  line-height: 1.65;
 }
 </style>

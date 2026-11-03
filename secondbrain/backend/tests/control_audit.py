@@ -43,7 +43,7 @@ def info(msg: str) -> None:
 
 # 页面 → 该页值得点/看的控件选择器
 PAGES: list[tuple[str, str, list[str]]] = [
-    ("/", "每周回顾", [".tabs .tab", ".btn", ".check-chip", ".tree-toggle"]),
+    ("/", "首页", [".tabs .tab", ".btn", ".check-chip", ".tree-toggle"]),
     ("/workbench", "采集区", [".btn", ".check-chip"]),
     ("/process", "加工区", [".btn", ".check-chip", ".tree-toggle", ".queue-chip"]),
     ("/original", "原创区", [".btn", ".check-chip"]),
@@ -238,22 +238,21 @@ async def main(base: str) -> int:
             (b.page_errors[0][:150] if b.page_errors else ""),
         )
 
-        # 专项：每周回顾卡片必须有真实内容（曾恒为空）
+        # 专项：首页回顾卡片必须有真实内容（曾恒为空）
         print("\n── 专项：首页回顾卡片 ──")
         b.page_errors.clear()
         await b.goto(f"{base}/", settle=2.2)
         recap = await b.eval(
             """(() => {
               const c = [...document.querySelectorAll('.content .card')]
-                .find(x => (x.innerText||'').includes('每周回顾'));
+                .find(x => (x.innerText||'').includes('今日回顾'));
               return c ? c.innerText.trim().replace(/\\n+/g, ' | ') : '(没找到)';
             })()"""
         )
         check(
-            "每周回顾卡片有内容",
-            # v32：卡片从「今日回顾」升级为「每周回顾」，
-            # 统计项改成 本周采集/入库/创作/待核准，并带「生成本周周报」入口。
-            "本周采集" in recap and "待补手稿" in recap and "生成本周周报" in recap,
+            "首页回顾卡片有内容",
+            # v33：用户要求首页保持「今日回顾」，周回顾移到侧边栏
+            "昨日采集" in recap and "待补手稿" in recap,
             recap[:110],
         )
 

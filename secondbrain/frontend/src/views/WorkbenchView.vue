@@ -8,7 +8,7 @@
  * 纵向三段：
  *   · 采集卡（粘贴分享文案 / 速记）
  *   · 状态横条（跳转口，「全部 →」进 /status 完整页）
- *   · 解析工作区（原文/字幕全文 + 配图）
+ *   · 解析（原文/字幕全文 + 配图），与采集**并列**（v33）
  *
  * 模板化解析（选模板 + 字数档位 + AI 生成）在**加工区**。
  */
@@ -325,16 +325,20 @@ onUnmounted(() => {
       <StatusStrip
         :items="states"
         :stats="stats"
-        :per-group="6"
+        :per-group="2"
         class="strip-top"
         @select="pickTask"
       />
 
-      <div class="card card-compact">
+      <!-- v33：采集与解析**左右并列**（用户：解析工作区改为解析，与采集并列）。
+           原来上下堆叠，采集卡占满一整行宽度但只用到一个文本框，
+           解析区被压到下面还得滚 —— 并列之后两边都看得到。 -->
+      <div class="wb-split">
+        <div class="card card-compact wb-pane">
           <div class="card-title">
             <span>⇪</span> 采集
             <span class="dim" style="font-weight:400;font-size:11.5px">
-              经济工具拿原文 · 抓完停在「原文就绪」，AI 加工到加工区做
+              粘贴即入库
             </span>
             <div class="spacer" style="flex:1"></div>
             <button class="btn ghost sm" @click="showQuickNote = !showQuickNote">速记</button>
@@ -411,19 +415,18 @@ onUnmounted(() => {
           </div>
         </div>
 
-      <!-- ==================== 下：解析区 ==================== -->
-      <!-- 解析区内部滚动：原文全文 + 配图 + 状态条加起来会超过一屏，
-           页面框架（采集卡 + 状态横条）保持不动，只让下半部分滚。 -->
-      <div class="wb-scroll">
-        <div v-if="!current" class="card empty">
-          <div class="icon">▤</div>
-          <div>选一条任务开始解析</div>
-        </div>
+      <!-- ==================== 右：解析 ==================== -->
+      <!-- v33：与「采集」并列（不再叫"解析工作区"）。 -->
+        <div class="wb-scroll wb-pane">
+          <div v-if="!current" class="card empty">
+            <div class="icon">▤</div>
+            <div>选一条任务开始解析</div>
+          </div>
 
         <template v-else>
           <div class="card">
             <div class="card-title">
-              <span>▤</span> 解析工作区
+              <span>▤</span> 解析
               <div class="spacer" style="flex:1"></div>
               <span class="badge" :class="stateClass(current.state)">
                 {{ current.stage }}
@@ -456,10 +459,9 @@ onUnmounted(() => {
             </div>
 
             <!-- 解析生成已归入「加工区」 -->
-            <div class="alert info" style="margin-top:12px">
-              要按模板生成解析结果（可选字数档位，≥800 字）？去
-              <a href="/process">加工区 →</a>
-              。也可以直接点上面的「重试」跑一次 AI 提取要点。
+            <div class="alert info" style="margin-top:10px;font-size:12px">
+              按模板生成解析稿（可选字数，≥800 字）请去
+              <a href="/process">加工区</a>；这里可以直接「重试」跑一次 AI 提取要点。
             </div>
           </div>
 
@@ -483,14 +485,16 @@ onUnmounted(() => {
               <span>🖼</span> 配图
               <span class="badge">{{ shots.length }}</span>
             </div>
-            <div class="row wrap">
-              <label class="row" style="margin:0">
+            <!-- v33：采集/解析并列后这一栏只有 ~570px，
+                 配图这几个输入框必须能换行，否则挤成一团。 -->
+            <div class="shot-form">
+              <label class="row" style="margin:0;flex:0 0 auto">
                 位置
                 <input
                   v-model.number="shotPosition"
                   type="number"
                   min="0"
-                  style="width:80px"
+                  style="width:64px"
                 />
                 段
               </label>
@@ -498,15 +502,13 @@ onUnmounted(() => {
                 v-model="shotCaption"
                 type="text"
                 placeholder="图注（可选）"
-                style="flex:1;min-width:140px"
               />
               <input
                 v-model="shotUrl"
                 type="text"
                 placeholder="图片地址，或选文件"
-                style="flex:1;min-width:160px"
               />
-              <input type="file" accept="image/*" style="width:auto" @change="onPickFile" />
+              <input type="file" accept="image/*" @change="onPickFile" />
               <button class="btn" :disabled="shotBusy" @click="insertShot">
                 {{ shotBusy ? '插入中…' : '插入配图' }}
               </button>
@@ -526,6 +528,7 @@ onUnmounted(() => {
           </div>
 
         </template>
+        </div>
       </div>
     </div>
   </div>
@@ -552,6 +555,20 @@ onUnmounted(() => {
   padding-bottom: 4px;
 }
 
+/* v33：采集 | 解析 左右并列（各占一半），状态条置顶占满整行。
+   原来上下堆叠：采集卡横占一整行只用到一个文本框，解析区被挤到下面还要滚。 */
+.wb-split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.wb-pane {
+  min-height: 0;
+  min-width: 0;
+}
+
 /* 紧凑卡片：采集卡压掉一半高度（用户：采集和解析面积至少减小一半）。
    卡片内边距 16 → 10，textarea 由 rows=5 降到 rows=2。 */
 .card-compact {
@@ -565,15 +582,22 @@ onUnmounted(() => {
   min-height: 46px;
 }
 
-/* 解析区内部滚动。
-   上半（状态条 + 采集卡）保持不动，长内容只在下半部分滚——
-   与加工区 .scroll-col 同一套做法（页面框架不滚，内容自己滚）。
-   用 flex:1 而不是写死 calc(100vh - N)：上半高度会随「速记」展开、
-   状态条条目数变化，写死的 N 迟早对不上。 */
+/* 解析侧：内部滚动（原文全文 + 配图加起来会超过一屏）。 */
 .wb-scroll {
-  flex: 1;
-  min-height: 120px;
   overflow-y: auto;
   padding-right: 6px;
+}
+
+/* 配图表单：窄栏里自动换行，每个控件都占满一行宽度 */
+.shot-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: center;
+}
+.shot-form input[type='text'],
+.shot-form input[type='file'] {
+  flex: 1 1 160px;
+  min-width: 0;
 }
 </style>

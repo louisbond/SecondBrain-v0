@@ -6,7 +6,7 @@
  */
 import { ref, onMounted, onUnmounted, computed, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { healthApi, collectApi, reviewApi } from './api/client'
+import { healthApi, collectApi, reviewApi, recapApi } from './api/client'
 
 const route = useRoute()
 const router = useRouter()
@@ -14,15 +14,17 @@ const health = ref(null)
 const stats = ref({})
 const pendingCount = ref(0)
 const toastHost = ref(null)
+// v33：侧边栏「每周回顾」用的本周数据（用户：把每周回顾覆盖到本机状态那里）
+const week = ref({})
+const weeklyBusy = ref(false)
 // 全局刷新信号：窗口重新获得焦点 / 切换路由时自增，视图 watch 它重拉数据。
 // 没有它就会出现"状态不同步"——顶栏计数在更新，页面里的列表还是旧的。
 const refreshSignal = ref(0)
 
 const navItems = [
-  // v32：一级导航第一项从「首页」改成「每周回顾」。
-  // 用户：「左下角（一级导航）改成每周回顾算了，首页那个去掉」。
-  // 路由仍是 /（HomeView 已改造：周回顾为主，搜索/图谱保留在下方）。
-  { to: '/', icon: '◷', label: '每周回顾' },
+  // v33：导航第一项恢复「首页」——用户澄清「每周回顾」是要覆盖到
+  // 侧边栏的「本机状态」那块，不是替换首页。
+  { to: '/', icon: '⌂', label: '首页' },
   { to: '/workbench', icon: '⇪', label: '采集区' },
   { to: '/process', icon: '✓', label: '加工区' },
   { to: '/original', icon: '✎', label: '原创区' },
@@ -40,9 +42,12 @@ const portNotice = computed(() => {
 
 const searchModeWarning = computed(() => health.value?.search_mode_warning)
 
-/** 侧边栏状态面板的跳转（点计数直达对应页面）。 */
-function go(path) {
-  if (route.path !== path) router.push(path)
+/** 侧边栏跳转（点计数直达对应页面）。第二参数可带状态筛选。 */
+function go(path, filter) {
+  const target = filter ? { path, query: { filter } } : path
+  if (route.path !== path || (filter && route.query.filter !== filter)) {
+    router.push(target)
+  }
 }
 
 async function refresh() {
@@ -61,6 +66,32 @@ async function refresh() {
     pendingCount.value = (pending.items || []).length
   } catch (e) {
     pendingCount.value = 0
+  }
+  try {
+    // 侧边栏周回顾：只要计数（card 是轻量接口，不写文件、不调 AI）
+    const c = await recapApi.card()
+    week.value = c || {}
+  } catch (e) {
+    week.value = {}
+  }
+}
+
+/** 侧边栏「生成本周周报」：生成后写 vault/_reports/，并提示去看。 */
+async function makeWeekly() {
+  if (weeklyBusy.value) return
+  weeklyBusy.value = true
+  try {
+    const r = await recapApi.weekly(0)
+    week.value = {
+      ...week.value,
+      collected_week: r.collected,
+      pending_review: week.value.pending_review
+    }
+    toast(`周报已生成：${r.week || ''}`, 'success')
+  } catch (e) {
+    toast('生成周报失败：' + (e.message || e), 'error')
+  } finally {
+    weeklyBusy.value = false
   }
 }
 
@@ -161,51 +192,48 @@ onUnmounted(() => {
       </nav>
 
       <!--
-        v31：侧边栏状态面板。
-        原来侧边栏只有品牌区 + 6 个菜单，下面是整片空白（208px × 全高）。
-        把空白填成**有用的常驻信息**：待核准 / 待补手稿 / 今日采集 / 失败数，
-        点一下直接跳到对应页面 —— 不用先切页面再找。
+        v33：侧边栏这块从「本机状态」改成「每周回顾」
+        （用户：把每周回顾覆盖到本机状态那里）。
+        显示本周采集/入库/创作 + 待核准，底部一键生成周报。
+        首页那个周回顾卡片已按用户要求去掉。
       -->
       <div class="sidebar-status">
-        <div class="sidebar-status-title">本机状态</div>
+        <div class="sidebar-status-title">每周回顾</div>
 
-        <button
-          class="sidebar-stat"
-          @click="go('/process')"
-        >
-          <span class="k">待核准</span>
-          <span class="v" :class="{ accent: stats.pending_review > 0 }">
-            {{ stats.pending_review || 0 }}
-          </span>
-        </button>
-        <button
-          class="sidebar-stat"
-          @click="go('/')"
-        >
-          <span class="k">待补手稿</span>
-          <span class="v" :class="{ warn: stats.need_manuscript > 0 }">
-            {{ stats.need_manuscript || 0 }}
-          </span>
-        </button>
         <button class="sidebar-stat" @click="go('/workbench')">
-          <span class="k">今日采集</span>
-          <span class="v">{{ stats.today || 0 }}</span>
+          <span class="k">本周采集</span>
+          <span class="v">{{ week.collected_week ?? stats.week ?? 0 }}</span>
         </button>
-        <button
-          class="sidebar-stat"
-          @click="go('/status')"
-        >
-          <span class="k">解析失败</span>
+        <button class="sidebar-stat" @click="go('/process')">
+          <span class="k">库中待核准</span>
+          <span class="v" :class="{ accent: (week.pending_review || stats.pending_review) > 0 }">
+            {{ week.pending_review ?? stats.pending_review ?? 0 }}
+          </span>
+        </button>
+        <button class="sidebar-stat" @click="go('/original')">
+          <span class="k">本周创作</span>
+          <span class="v">{{ week.created_notes_week ?? 0 }}</span>
+        </button>
+        <button class="sidebar-stat" @click="go('/status', 'fail')">
+          <span class="k">失败任务</span>
           <span class="v" :class="{ danger: (stats.by_status?.ai_failed || 0) > 0 }">
             {{ stats.by_status?.ai_failed || 0 }}
           </span>
+        </button>
+
+        <button
+          class="sidebar-weekly-btn"
+          :disabled="weeklyBusy"
+          @click="makeWeekly"
+        >
+          {{ weeklyBusy ? '生成中…' : '生成本周周报' }}
         </button>
       </div>
 
       <div class="sidebar-foot">
         <div class="dim" style="font-size:11px;line-height:1.6">
           共 {{ stats.total || 0 }} 条素材<br />
-          本周 {{ stats.week || 0 }} 条
+          本周采集 {{ stats.week || 0 }} 条
         </div>
       </div>
     </aside>

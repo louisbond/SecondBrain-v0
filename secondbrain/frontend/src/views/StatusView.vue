@@ -5,23 +5,40 @@
  * 从采集区、加工区跳转过来。每条任务显示：阶段、进度、耗时、
  * 失败原因（可读文本）+ 重试按钮。
  */
-import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { workbenchApi, itemsApi, noteRoute } from '../api/client'
 
 const toast = inject('toast')
 const router = useRouter()
+const route = useRoute()
 
 const states = ref([])
 const stats = ref({})
 const loading = ref(false)
-const filter = ref('all')
-let timer = null
+
+// v33：从采集区的状态条点某个状态跳过来时带 ?filter=done，
+// 落地就该是那一类，不用再手动点一次筛选。
+const VALID_FILTERS = ['all', 'run', 'wait', 'done', 'fail']
+const filter = ref(
+  VALID_FILTERS.includes(String(route.query.filter || '')) ? String(route.query.filter) : 'all'
+)
+
+// 停留在本页时再点别的状态（例如从侧边栏）也要跟着变
+watch(
+  () => route.query.filter,
+  (v) => {
+    const f = String(v || '')
+    if (VALID_FILTERS.includes(f)) filter.value = f
+  }
+)
 
 const filtered = computed(() => {
   if (filter.value === 'all') return states.value
   return states.value.filter((i) => i.state === filter.value)
 })
+
+let timer = null
 
 const FILTERS = [
   { id: 'all', label: '全部' },
