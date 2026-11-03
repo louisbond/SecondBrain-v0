@@ -52,6 +52,11 @@ class NotesService:
             "level": note.level,
             "form": note.form,
             "frontmatter": note.frontmatter,
+            # 双摘要（AI 在上、个人手稿在下）——阅读页直接用这两个顶层字段，
+            # 不要让前端去 frontmatter 里翻（v29 时前端读 note.summary / note.manuscript，
+            # 后端没返回 → 两块永远不渲染）。
+            "summary": note.summary,
+            "manuscript": note.manuscript,
             "body": note.body,
             "tags": note.tags,
             "partitions": note.partitions,
@@ -168,6 +173,46 @@ class NotesService:
 
         self._index_note(path, fm, new_body)
         return {"note_path": path.as_posix(), "title": fm.get("title", "")}
+
+    def fill_manuscript(self, note_path: str, manuscript: str) -> dict[str, Any]:
+        """补写个人手稿（已入库但手稿为空的 B 层笔记）。
+
+        设计文档 §438：手稿为空也可确认入库（软门槛不拦截），
+        但条目进入「待补手稿」清单，回顾卡片持续提醒 —— 必须有个补写入口，
+        否则软门槛就变成了「永远补不上」的死路。
+
+        md 是唯一真相源：改 frontmatter 的 personal_summary 后重写 md，
+        再重索引（notes.personal_summary_empty / digested / FTS 的 manuscript 列）。
+        """
+        path = Path(note_path)
+        if not path.exists():
+            resolved = vault_mod.link_target_to_relpath(note_path, self.cfg.vault.path)
+            path = Path(resolved)
+            if not path.exists():
+                raise KeyError("笔记不存在")
+
+        note = vault_mod.read_note(path)
+        if note is None:
+            raise KeyError("笔记读取失败")
+
+        fm = dict(note.frontmatter)
+        text = (manuscript or "").strip()
+        fm["personal_summary"] = text
+        # 有手稿即视为已消化（与 _write_processed 的 digested 规则一致）
+        fm["digested"] = bool(text)
+        vault_mod.write_note(path, fm, note.body)
+
+        # 重索引：让 notes.digested / personal_summary_empty 与 FTS 同步
+        from app.services.index_service import get_index_service
+
+        get_index_service().reindex_one(path)
+
+        return {
+            "ok": True,
+            "note_path": path.as_posix(),
+            "title": fm.get("title", ""),
+            "digested": bool(text),
+        }
 
     def delete_note(self, note_path: str) -> bool:
         path = Path(note_path)

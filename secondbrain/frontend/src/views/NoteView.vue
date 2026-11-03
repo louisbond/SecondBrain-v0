@@ -11,7 +11,7 @@
  */
 import { ref, onMounted, watch, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { searchApi, notesApi, itemsApi } from '../api/client'
+import { searchApi, notesApi, itemsApi, noteRoute } from '../api/client'
 
 const toast = inject('toast')
 const refreshSignal = inject('refreshSignal')
@@ -131,9 +131,34 @@ async function archive() {
   try {
     await notesApi.archive(notePath())
     toast('已归档', 'success')
-    router.push('/search')
+    router.push('/')
   } catch (e) {
     toast('归档失败：' + e.message, 'error')
+  }
+}
+
+// ---- 补写个人手稿（已入库但手稿为空的 B 层笔记）----
+const editingManuscript = ref(false)
+const manuscriptDraft = ref('')
+const savingManuscript = ref(false)
+
+function startEditManuscript() {
+  manuscriptDraft.value = note.value?.manuscript || ''
+  editingManuscript.value = true
+}
+
+async function saveManuscript() {
+  if (!note.value) return
+  savingManuscript.value = true
+  try {
+    await notesApi.fillManuscript(note.value.note_path, manuscriptDraft.value)
+    toast('手稿已保存', 'success')
+    editingManuscript.value = false
+    await load()
+  } catch (e) {
+    toast('保存失败：' + e.message, 'error')
+  } finally {
+    savingManuscript.value = false
   }
 }
 
@@ -185,11 +210,38 @@ onMounted(load)
       </div>
     </div>
 
-    <!-- 个人手稿（下） -->
-    <div v-if="note.manuscript" class="review-block human">
-      <div class="block-head"><span>✍️</span> 个人手稿</div>
-      <div class="block-body">
-        <div class="ai-summary">{{ note.manuscript }}</div>
+    <!-- 个人手稿（下）——B 层笔记这里是主内容；空的时候给出补写入口 -->
+    <div v-if="note.manuscript || note.level === 'processed'" class="review-block human">
+      <div class="block-head">
+        <span>✍️</span> 个人手稿
+        <span v-if="!note.manuscript" class="badge warn">待补</span>
+        <div class="spacer" style="flex:1"></div>
+        <button
+          v-if="!editingManuscript"
+          class="btn ghost sm"
+          @click="startEditManuscript"
+        >
+          {{ note.manuscript ? '编辑手稿' : '补写手稿' }}
+        </button>
+      </div>
+      <div v-if="editingManuscript" class="block-body">
+        <textarea
+          v-model="manuscriptDraft"
+          rows="5"
+          placeholder="写下你的理解、疑问、行动点"
+        ></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="btn primary" :disabled="savingManuscript" @click="saveManuscript">
+            {{ savingManuscript ? '保存中…' : '保存手稿' }}
+          </button>
+          <button class="btn ghost" @click="editingManuscript = false">取消</button>
+        </div>
+      </div>
+      <div v-else class="block-body">
+        <div v-if="note.manuscript" class="ai-summary">{{ note.manuscript }}</div>
+        <div v-else class="dim">
+          还没有写手稿。手稿是图谱里的主节点，也是这条笔记真正属于你的部分——
+        </div>
       </div>
     </div>
 
@@ -227,7 +279,7 @@ onMounted(load)
             <RouterLink
               v-for="b in note.backlinks"
               :key="b.note_path"
-              :to="'/note/' + b.note_path"
+              :to="noteRoute(b.note_path)"
               class="list-item"
               style="text-decoration:none;color:inherit"
             >
@@ -245,7 +297,7 @@ onMounted(load)
             <RouterLink
               v-for="o in note.outlinks"
               :key="o.note_path"
-              :to="'/note/' + o.note_path"
+              :to="noteRoute(o.note_path)"
               class="list-item"
               style="text-decoration:none;color:inherit"
             >

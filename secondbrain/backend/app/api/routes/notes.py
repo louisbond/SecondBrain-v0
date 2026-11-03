@@ -122,3 +122,25 @@ async def archive(note_path: str) -> dict[str, Any]:
         return svc.archive(note_path)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class ManuscriptIn(BaseModel):
+    note_path: str
+    manuscript: str = ""
+
+
+@router.post("/manuscript")
+async def fill_manuscript(req: ManuscriptIn) -> dict[str, Any]:
+    """补写个人手稿（已入库但手稿为空的 B 层笔记）。
+
+    设计文档 §438 的软门槛：确认入库时手稿可以留空，
+    但条目会进「待补手稿」清单 —— 这里就是那个清单的补写入口。
+
+    note_path 走请求体而不是 URL 路径：`{note_path:path}` 是贪婪匹配，
+    放在路径里会被前面的 PUT /{note_path:path} 抢先命中。
+    """
+    svc = get_notes_service()
+    try:
+        return svc.fill_manuscript(req.note_path, req.manuscript)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -8,10 +8,12 @@
  *   ③ 回顾（下）—— 今日该回顾什么
  */
 import { ref, computed, onMounted, inject } from 'vue'
-import { searchApi, recapApi, notesApi } from '../api/client'
+import { useRouter } from 'vue-router'
+import { searchApi, recapApi, notesApi, reviewApi, noteRoute } from '../api/client'
 import Graph3D from '../components/Graph3D.vue'
 
 const toast = inject('toast')
+const router = useRouter()
 
 // ---------------- 搜索 ----------------
 const query = ref('')
@@ -106,8 +108,11 @@ async function doSearch() {
   }
 }
 
+/** 打开阅读页。用路由跳转而不是 window.location.href——
+ *  后者会整页重载，丢掉 SPA 状态（筛选/滚动位置全丢），还会重复拉一遍数据。 */
 function openNote(path) {
-  window.location.href = `/note/${path.split('/').map(encodeURIComponent).join('/')}`
+  if (!path) return
+  router.push(noteRoute(path))
 }
 
 // ---------------- 图谱 ----------------
@@ -136,13 +141,34 @@ async function openGraphNode(node) {
 }
 
 // ---------------- 回顾 ----------------
+// 后端 /api/recap/card 返回的是「计数 + 一条加权未引用旧笔记」，
+// 不是 {title, items[]}——前端原先按后者写，回顾块永远是空的。
 const card = ref(null)
+const needManuscript = ref([])
+const showNeedManuscript = ref(false)
 
 async function loadCard() {
   try {
     card.value = await recapApi.card()
   } catch (e) {
     card.value = { error: e.message }
+  }
+}
+
+/** 待补手稿清单（已入库但手稿为空的 B 层笔记）。 */
+async function loadNeedManuscript() {
+  try {
+    const data = await reviewApi.needManuscript()
+    needManuscript.value = data.items || []
+  } catch (e) {
+    needManuscript.value = []
+  }
+}
+
+async function toggleNeedManuscript() {
+  showNeedManuscript.value = !showNeedManuscript.value
+  if (showNeedManuscript.value && !needManuscript.value.length) {
+    await loadNeedManuscript()
   }
 }
 
@@ -290,7 +316,7 @@ onMounted(async () => {
       <Graph3D
         :nodes="graph.nodes || []"
         :edges="graph.edges || []"
-        :height="400"
+        :height="376"
         @select="openGraphNode"
       />
       <div v-if="graphSel" class="alert info" style="margin-top:8px">
@@ -311,24 +337,71 @@ onMounted(async () => {
       <div v-if="!card" class="dim">加载中…</div>
       <div v-else-if="card.error" class="alert warn">{{ card.error }}</div>
       <template v-else>
-        <div v-if="card.title" class="ai-summary" style="margin-bottom:8px">
-          {{ card.title }}
+        <!-- 采集/创作计数（紧凑单行——首页必须一屏放下） -->
+        <div class="recap-stats">
+          <span>昨日采集 <b>{{ card.collected_yesterday || 0 }}</b></span>
+          <span>本周采集 <b>{{ card.collected_week || 0 }}</b></span>
+          <span>待核准 <b class="accent">{{ card.pending_review || 0 }}</b></span>
+          <span>本周创作 <b>{{ card.created_notes_week || 0 }}</b></span>
         </div>
-        <div class="recap-row">
+
+        <div class="recap-row" style="margin-top:8px">
+          <!-- 待补手稿（软门槛的提醒 + 补写入口） -->
           <div
-            v-for="(item, i) in (card.items || []).slice(0, 4)"
+            class="list-item"
+            style="cursor:pointer"
+            @click="toggleNeedManuscript"
+          >
+            <div class="grow">
+              <div class="title">
+                待补手稿
+                <span class="badge" :class="card.need_manuscript ? 'warn' : 'ok'">
+                  {{ card.need_manuscript || 0 }}
+                </span>
+              </div>
+              <div class="sub">
+                {{
+                  card.need_manuscript
+                    ? '已入库但手稿为空——点这里补写'
+                    : '手稿都补齐了'
+                }}
+              </div>
+            </div>
+            <span class="dim">{{ showNeedManuscript ? '收起' : '▸' }}</span>
+          </div>
+
+          <!-- 加权未引用旧笔记 -->
+          <div
+            v-if="card.unreferenced_note"
+            class="list-item"
+            style="cursor:pointer"
+            @click="openNote(card.unreferenced_note.note_path)"
+          >
+            <div class="grow">
+              <div class="title">{{ card.unreferenced_note.title }}</div>
+              <div class="sub">{{ card.unreferenced_note.reason }}</div>
+            </div>
+          </div>
+          <div v-else class="dim" style="padding:4px">
+            暂时没有需要回顾的内容
+          </div>
+        </div>
+
+        <div v-if="showNeedManuscript" class="recap-row" style="margin-top:6px">
+          <div
+            v-for="(m, i) in needManuscript"
             :key="i"
             class="list-item"
             style="cursor:pointer"
-            @click="item.note_path && openNote(item.note_path)"
+            @click="openNote(m.note_path)"
           >
             <div class="grow">
-              <div class="title">{{ item.title || item.note_title }}</div>
-              <div class="sub">{{ item.reason || item.hint || '' }}</div>
+              <div class="title">{{ m.title }}</div>
+              <div class="sub">{{ m.created_at || '' }}</div>
             </div>
           </div>
-          <div v-if="!(card.items || []).length" class="dim" style="padding:4px">
-            暂时没有需要回顾的内容
+          <div v-if="!needManuscript.length" class="dim" style="padding:4px">
+            没有待补手稿的条目
           </div>
         </div>
       </template>
@@ -399,5 +472,19 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
+}
+.recap-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.recap-stats b {
+  color: var(--text);
+  font-weight: 650;
+}
+.recap-stats b.accent {
+  color: var(--accent);
 }
 </style>

@@ -1,6 +1,7 @@
 # 构建产物
 secondbrain/frontend/dist/
 secondbrain/frontend/node_modules/
+secondbrain/frontend/public/vditor/
 secondbrain/build/
 secondbrain/dist/
 secondbrain/data/

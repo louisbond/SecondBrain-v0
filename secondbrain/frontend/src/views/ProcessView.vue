@@ -19,12 +19,9 @@ const router = useRouter()
 // ---------------- 队列 ----------------
 const queue = ref([])
 const manualQueue = ref([])
-const aiFailed = ref([])
 const current = ref(null)
 const loading = ref(false)
 const saving = ref(false)
-const sourceOpen = ref(false)
-const sourceContent = ref(null)
 
 // ---------------- 核准表单 ----------------
 const form = ref({
@@ -66,16 +63,6 @@ const summaryTypeLabel = computed(() => {
   return { bullets: '要点式', structured: '结构化', one_liner: '一句话' }[t] || '要点式'
 })
 
-const otherPartitions = computed(() => {
-  const used = new Set([
-    ...(current.value?.suggested_partitions || []),
-    ...form.value.partitions
-  ])
-  return (vocab.value.partitions || [])
-    .map((x) => (typeof x === 'string' ? x : x.name))
-    .filter((name) => !used.has(name))
-})
-
 const otherTags = computed(() => {
   const used = new Set([
     ...(current.value?.suggested_tags || []),
@@ -86,17 +73,14 @@ const otherTags = computed(() => {
     .filter((name) => !used.has(name))
 })
 
-// 分区词表：AI 建议的可能是「父/子」路径，要能和词表里的 name 对上
-const partitionName = (p) => (typeof p === 'string' ? p : p.name)
-
 // ---------------- 加载 ----------------
 async function loadQueue() {
   loading.value = true
   try {
     const data = await reviewApi.pending()
     queue.value = data.items || []
+    // manual 已包含 ai_failed（后端 MANUAL_CONFIRMABLE 覆盖），无需单独取
     manualQueue.value = data.manual || []
-    aiFailed.value = data.ai_failed || []
     const all = [...queue.value, ...manualQueue.value]
     if (all.length && !current.value) await selectItem(all[0].id)
     if (!all.length) current.value = null
@@ -194,8 +178,9 @@ async function selectItem(id) {
       tags: [...(data.suggested_tags || [])],
       partitions: [...(data.suggested_partitions || [])],
       confirmed_related: (data.embedding_related || []).map((r) => r.note_path),
-      new_tags: [...(data.pending_tags || [])],
-      new_partitions: [...(data.pending_partitions || [])]
+      // 待定标签**默认不勾选**——「词表外的进待定标签，用户勾选才入库」。
+      // 之前这里直接铺开全部 pending_tags，等于没经用户确认就写进受控词表。
+      new_tags: []
     }
     parseResult.value = null
     parseText.value = ''
@@ -225,8 +210,13 @@ function toggleVocabTag(name) {
 
 function toggleNewTag(name) {
   const i = form.value.new_tags.findIndex((t) => t.name === name)
-  if (i >= 0) form.value.new_tags.splice(i, 1)
-  else form.value.new_tags.push({ name, reason: '' })
+  if (i >= 0) {
+    form.value.new_tags.splice(i, 1)
+  } else {
+    // 保留 AI 给的理由（chip 的 tooltip 要显示它）
+    const src = (current.value?.pending_tags || []).find((t) => t.name === name)
+    form.value.new_tags.push({ name, reason: src?.reason || '' })
+  }
 }
 
 function isNewTagChecked(name) {
@@ -285,8 +275,7 @@ function partCount(node) {
 }
 
 
-/** 把解析结果送到创作页（独立页面）。 */
-
+/** 把解析结果送到原创区（跨页草稿，见 utils/draft.js）。 */
 async function confirm() {
   if (!current.value) return
   saving.value = true

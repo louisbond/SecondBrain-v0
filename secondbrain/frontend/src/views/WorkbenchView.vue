@@ -5,13 +5,12 @@
  * 定位：这里的处理用**经济的工具**（本地解析/便宜模型），只做"拿到原文"这一步；
  * 原文到手 → 自动送入加工区做 AI 深度总结（豆包/DeepSeek 级深度思考）。
  *
- * 左：采集输入（批量粘贴 / 速记）
- * 中：任务实时状态（阶段 / 进度 / 成败）
- * 右：解析区
- *   · 原始字幕 / 语音转写全文
- *   · AI 自动匹配模板生成解析结果（强制 ≥1000 字，不足则提示并重新生成）
- *   · 在指定位置插入配图
- *   · 模板管理（新增 / 编辑 / 删除）
+ * 纵向三段：
+ *   · 采集卡（粘贴分享文案 / 速记）
+ *   · 状态横条（跳转口，「全部 →」进 /status 完整页）
+ *   · 解析工作区（原文/字幕全文 + 配图）
+ *
+ * 模板化解析（选模板 + 字数档位 + AI 生成）在**加工区**。
  */
 import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import {
@@ -39,9 +38,6 @@ const loading = ref(false)
 const current = ref(null)
 const content = ref(null)
 const loadingContent = ref(false)
-
-// ---------------- 模板 ----------------
-const templates = ref([])
 
 // ---------------- 解析 ----------------
 
@@ -94,15 +90,6 @@ async function loadStatus() {
     toast('加载状态失败：' + e.message, 'error')
   } finally {
     loading.value = false
-  }
-}
-
-async function loadTemplates() {
-  try {
-    const data = await workbenchApi.templates()
-    templates.value = data.templates || []
-  } catch (e) {
-    /* 模板加载失败不阻塞 */
   }
 }
 
@@ -206,14 +193,6 @@ async function doQuickNote() {
 }
 
 
-// ---------------- 模板化解析 ----------------
-
-// ---------------- 模板管理 ----------------
-
-
-
-
-
 // ---------------- 配图 ----------------
 function onPickFile(e) {
   shotFile.value = e.target.files?.[0] || null
@@ -275,7 +254,6 @@ async function removeShot(index) {
 let timer = null
 onMounted(async () => {
   await loadStatus()
-  await loadTemplates()
   timer = setInterval(loadStatus, 3000)
 })
 onUnmounted(() => {

@@ -315,7 +315,10 @@ onMounted(load)
           <span v-if="providers.cli.is_node_script">（node 脚本，用 {{ providers.cli.node }} 执行）</span>
         </div>
 
-        <div class="grid-2">
+        <!-- Provider 列表：内部滚动。
+             链的数量不固定（workbuddy/ollama/openai_compat…），不设上限的话
+             页面高度会随链数增长，破坏「每页内容高度 ≤ 视口」。 -->
+        <div class="provider-list">
           <div
             v-for="p in providers?.providers || []"
             :key="p.name"
@@ -552,3 +555,14 @@ onMounted(load)
     </template>
   </div>
 </template>
+
+<style scoped>
+/* Provider 列表：内部滚动，链数再多也不撑破页面高度 */
+.provider-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  max-height: 176px;
+  overflow-y: auto;
+}
+</style>

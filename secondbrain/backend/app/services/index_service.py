@@ -177,6 +177,22 @@ class IndexService:
         """索引单个文件。"""
         self._index_files([(path, note, level)])
 
+    def reindex_one(self, path: Path) -> None:
+        """重新索引单个 md 文件（层级自动判定）。
+
+        用于「改完 frontmatter 后同步索引」——
+        例如补写个人手稿：notes.digested / personal_summary_empty
+        与 FTS 的 manuscript 列都必须跟着变，否则「待补手稿」清单永远刷不掉。
+        """
+        path = Path(path)
+        note = vault_mod.read_note(path)
+        if note is None:
+            raise KeyError("笔记读取失败")
+        level = self._detect_level(path, note)
+        if level not in ("processed", "note"):
+            return
+        self._index_files([(path, note, level)])
+
     def _dir_partition_candidates(self, path: Path) -> list[str]:
         """从文件所在目录推导分区路径候选（由深到浅）。
 

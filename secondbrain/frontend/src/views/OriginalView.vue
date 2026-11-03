@@ -6,12 +6,11 @@
  * - 加工区「送去原创区」的解析稿会自动载入（sessionStorage）
  * - 产出 C 层笔记
  */
-import { ref, computed, onMounted, onUnmounted, inject, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
 import { notesApi } from '../api/client'
 import { loadDraft, clearDraft } from '../utils/draft'
 
 const toast = inject('toast')
-const refreshSignal = inject('refreshSignal')
 
 const editorEl = ref(null)
 const draftTitle = ref('')
@@ -19,9 +18,9 @@ const draftTags = ref([])
 const inspiration = ref([])
 const inspirationAvailable = ref(true)
 const saving = ref(false)
-const loaded = ref(false)
 const activeTpl = ref('')
 let editor = null
+let editorReady = null
 let inspirationTimer = null
 
 // 空数据模板：给一个骨架（标题占位 + 建议分区/标签），填了详情就能归档
@@ -97,30 +96,64 @@ function applyTemplate(tpl) {
 }
 
 // ---------------- Vditor 编辑器 ----------------
+// 三个坑叠在一起，症状都是"编辑器空白"或"写不进去"：
+//
+// 1) Vditor 3.11 起 cache.enable 默认 true，且**必须**同时给 cache.id，
+//    否则构造时直接抛 "need options.cache.id" → 编辑器整个不渲染。
+//    （报错在 Promise 里，页面看不出异常，只是「编辑器空白」）
+// 2) cdn 必须指向**本地**资源（public/vditor/）：默认走 unpkg.com，
+//    而 SecondBrain 是本机离线应用，CDN 取不到 lute.min.js 时
+//    编辑器框架能出来但内容写不进去。
+// 3) `new Vditor()` 是**异步初始化**的：内部先 loadScript(i18n) → 再 loadScript(lute)
+//    → 才调 init() 建出真正的编辑器。构造函数返回时 `this.vditor` 还是 undefined，
+//    此时调 setValue() 会抛 "Cannot read properties of undefined (reading 'currentMode')"。
+//    所以必须等 `editor.vditor` 出现（= init 完成）才能写内容。
+
+const VEDITOR_CDN = '/vditor'
+
 function ensureEditor() {
-  if (editor || !editorEl.value) return
-  import('vditor').then(({ default: Vditor }) => {
+  if (editor) return Promise.resolve(editor)
+  if (editorReady) return editorReady
+  editorReady = import('vditor').then(({ default: Vditor }) => {
     editor = new Vditor(editorEl.value, {
       height: 460,
       placeholder: '写下你的思考。解析结果、引用建议都可以一键插入。',
       mode: 'sv',
+      cache: { enable: false },
+      cdn: VEDITOR_CDN,
       toolbar: ['emoji', 'bold', 'italic', 'strike', '|', 'list', 'ordered', 'check', '|', 'quote', 'link', 'undo', 'redo']
     })
+    return waitEditorReady(editor)
+  })
+  return editorReady
+}
+
+/** 等 Vditor 异步初始化完成（`editor.vditor` 就位才算 ready）。 */
+function waitEditorReady(ed, timeout = 8000) {
+  return new Promise((resolve, reject) => {
+    const started = Date.now()
+    const tick = () => {
+      if (ed && ed.vditor) {
+        resolve(ed)
+        return
+      }
+      if (Date.now() - started > timeout) {
+        reject(new Error('编辑器初始化超时'))
+        return
+      }
+      setTimeout(tick, 60)
+    }
+    tick()
   })
 }
 
 function setEditorValue(v) {
-  nextTick(() => {
-    ensureEditor()
-    if (!editor) {
-      // 动态 import 还没到位，稍后再试
-      setTimeout(() => {
-        if (editor) editor.setValue(v)
-      }, 300)
-      return
-    }
-    editor.setValue(v)
-  })
+  ensureEditor()
+    .then((ed) => ed.setValue(v))
+    .catch((e) => {
+      /* 编辑器加载失败：提示而不是静默吞掉 */
+      toast('编辑器加载失败：' + (e?.message || e), 'error')
+    })
 }
 
 // ---------------- 引用建议 ----------------
@@ -203,14 +236,12 @@ function addDraftTag(event) {
 }
 
 watch(draftTitle, scheduleInspiration)
-watch(refreshSignal, () => {
-  /* 创作页不随全局刷新重载（会丢草稿） */
-})
 
 onMounted(() => {
-  ensureEditor()
+  ensureEditor().catch(() => {
+    /* 已在 setEditorValue 里提示 */
+  })
   loadFromDraft()
-  loaded.value = true
 })
 
 onUnmounted(() => {

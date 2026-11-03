@@ -2162,3 +2162,80 @@ class TestManuscriptNode:
         g = get_graph_service().build(limit=400)
         ms = [n for n in g["nodes"] if n["kind"] == "manuscript"]
         assert not any(n.get("note_title") == "无手稿" for n in ms)
+
+
+class TestManuscriptFill:
+    """补写个人手稿（§438 软门槛的补写入口）。
+
+    回归背景：确认入库时手稿允许留空（软门槛不拦截），
+    条目进「待补手稿」清单——但**没有补写入口**，软门槛就变成死路。
+    """
+
+    def _make_processed_without_manuscript(self, title: str) -> tuple[int, str]:
+        """造一条已入库但手稿为空的 B 层笔记，返回 (item_id, note_path)。"""
+        from app.services.ingest_service import get_ingest_service
+        from app.services.review_service import get_review_service
+
+        ingest = get_ingest_service()
+        res = ingest.submit(
+            [{"url": f"https://example.com/fill-{title}", "platform": "web", "title": title}]
+        )
+        item_id = res.accepted[0]["id"]
+        ingest.update_item(item_id, status="extracted", raw_text="正文" * 30)
+
+        out = get_review_service().confirm(
+            item_id,
+            title=title,
+            personal_summary="",  # 软门槛：手稿留空也允许入库
+            tags=[],
+            partitions=[],
+            confirmed_related=[],
+            ai_summary="AI 摘要" * 10,
+            summary_type="bullets",
+        )
+        return item_id, out["path"]
+
+    def test_filled_manuscript_persists_to_md(self):
+        from app.core import vault as vault_mod
+        from app.services.notes_service import get_notes_service
+
+        _item_id, note_path = self._make_processed_without_manuscript("补写测试")
+        svc = get_notes_service()
+        svc.fill_manuscript(note_path, "这是我补写的手稿")
+
+        note = vault_mod.read_note(vault_mod.Path(note_path))
+        assert note is not None
+        assert note.manuscript == "这是我补写的手稿", note.manuscript
+        assert note.digested is True
+
+    def test_filled_manuscript_clears_pending_flag(self):
+        """补写后必须离开「待补手稿」清单 —— 否则软门槛永远刷不掉。"""
+        from app.services.notes_service import get_notes_service
+        from app.services.review_service import get_review_service
+
+        _item_id, note_path = self._make_processed_without_manuscript("清单测试")
+
+        before = get_review_service().list_digest_pending()
+        assert any(n["note_path"] == note_path for n in before), before
+
+        get_notes_service().fill_manuscript(note_path, "补上的手稿")
+
+        after = get_review_service().list_digest_pending()
+        assert not any(n["note_path"] == note_path for n in after), after
+
+    def test_get_note_returns_summary_and_manuscript(self):
+        """阅读页的双摘要块读 note.summary / note.manuscript ——
+        后端不返回这两个顶层字段的话，两块永远不渲染。"""
+        from app.services.notes_service import get_notes_service
+
+        _item_id, note_path = self._make_processed_without_manuscript("双摘要测试")
+        svc = get_notes_service()
+        note = svc.get_note(note_path)
+        assert note is not None
+        assert "summary" in note, sorted(note.keys())
+        assert "manuscript" in note, sorted(note.keys())
+        assert note["summary"], note["summary"]
+
+        svc.fill_manuscript(note_path, "顶层手稿字段")
+        note2 = svc.get_note(note_path)
+        assert note2["manuscript"] == "顶层手稿字段", note2["manuscript"]

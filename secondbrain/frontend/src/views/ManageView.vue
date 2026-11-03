@@ -42,6 +42,15 @@ const tplDesc = ref('')
 const promptTemplate = ref('')
 const promptSaved = ref(false)
 
+// 平台适配器能力（从设置区搬来的只读展示）
+const adapters = ref([])
+const supportLevels = {
+  full: { label: '完整可用', cls: 'ok' },
+  partial: { label: '部分可用', cls: 'warn' },
+  unstable: { label: '不稳定', cls: 'danger' },
+  manual: { label: '仅手动兜底', cls: '' }
+}
+
 // 诊断 / 维护
 const diagnosis = ref(null)
 const busy = ref(false)
@@ -88,6 +97,16 @@ async function loadDiagnosis() {
     diagnosis.value = await workbenchApi.diagnose()
   } catch (e) {
     diagnosis.value = { ok: false, checks: [{ name: '诊断失败', ok: false, detail: e.message }] }
+  }
+}
+
+/** 平台适配器能力（只读清单，来自 /api/settings 的 adapters 字段）。 */
+async function loadAdapters() {
+  try {
+    const data = await settingsApi.get()
+    adapters.value = data.adapters || []
+  } catch (e) {
+    adapters.value = []
   }
 }
 
@@ -294,7 +313,14 @@ async function doBackup() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadPartitions(), loadTags(), loadTemplates(), loadPrompt(), loadDiagnosis()])
+  await Promise.all([
+    loadPartitions(),
+    loadTags(),
+    loadTemplates(),
+    loadPrompt(),
+    loadDiagnosis(),
+    loadAdapters()
+  ])
 })
 </script>
 
@@ -493,6 +519,24 @@ onMounted(async () => {
       <textarea v-model="promptTemplate" rows="20" class="mono"></textarea>
     </div>
 
+    <!-- ============ 平台能力（从设置区搬来） ============ -->
+    <div v-else-if="section === 'adapters'" class="card">
+      <div class="card-title"><span>📡</span> 平台适配器能力</div>
+      <div class="list-item" v-for="a in adapters" :key="a.name">
+        <div class="grow">
+          <div class="title">{{ a.label }}</div>
+          <div class="sub">
+            <span v-if="a.supports_subtitle">字幕 ✓</span>
+            <span v-if="a.supports_audio"> · 音频 ✓</span>
+          </div>
+        </div>
+        <span class="badge" :class="supportLevels[a.support_level]?.cls">
+          {{ supportLevels[a.support_level]?.label || a.support_level }}
+        </span>
+      </div>
+      <div v-if="!adapters.length" class="dim">没有可用的适配器</div>
+    </div>
+
     <!-- ============ 维护与诊断 ============ -->
     <div v-else class="grid-2" style="grid-template-columns:1fr 1fr;align-items:start">
       <div class="card">
@@ -533,23 +577,6 @@ onMounted(async () => {
       </div>
     </div>
   </div>
-
-    <!-- ============ 平台能力（从设置区搬来） ============ -->
-    <div v-if="section === 'adapters'" class="card">
-      <div class="card-title"><span>📡</span> 平台适配器能力</div>
-      <div class="list-item" v-for="a in settings.adapters" :key="a.name">
-        <div class="grow">
-          <div class="title">{{ a.label }}</div>
-          <div class="sub">
-            <span v-if="a.supports_subtitle">字幕 ✓</span>
-            <span v-if="a.supports_audio"> · 音频 ✓</span>
-          </div>
-        </div>
-        <span class="badge" :class="supportLevels[a.support_level]?.cls">
-          {{ supportLevels[a.support_level]?.label || a.support_level }}
-        </span>
-      </div>
-    </div>
 </template>
 
 <style scoped>

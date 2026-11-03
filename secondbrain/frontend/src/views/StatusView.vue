@@ -6,9 +6,11 @@
  * 失败原因（可读文本）+ 重试按钮。
  */
 import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
-import { workbenchApi, itemsApi } from '../api/client'
+import { useRouter } from 'vue-router'
+import { workbenchApi, itemsApi, noteRoute } from '../api/client'
 
 const toast = inject('toast')
+const router = useRouter()
 
 const states = ref([])
 const stats = ref({})
@@ -54,11 +56,13 @@ async function retry(id) {
   }
 }
 
-/** 打开这条任务的 A/B 层原文 */
+/** 打开这条任务的 A/B 层原文。
+ *
+ * 用路由跳转而不是 window.location.href——后者会整页重载，
+ * 丢掉 SPA 状态，还会让页面重新挂载一遍所有视图。 */
 function openItem(item) {
   if (!item.inbox_path && !item.processed_path) return
-  const p = (item.processed_path || item.inbox_path).split('/').map(encodeURIComponent).join('/')
-  window.location.href = `/note/${p}`
+  router.push(noteRoute(item.processed_path || item.inbox_path))
 }
 
 onMounted(() => {

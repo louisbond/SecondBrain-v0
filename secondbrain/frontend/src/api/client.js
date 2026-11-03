@@ -32,6 +32,18 @@ function encodePath(path) {
     .join('/')
 }
 
+/**
+ * 笔记详情页的路由地址。
+ *
+ * note_path 是**绝对路径**（含盘符 `D:`），盘符里的冒号必须编码，
+ * 否则会被当成 URL 的 scheme。所有跳转到阅读页的地方都用这个函数，
+ * 免得各处自己拼 —— 之前 NoteView 用裸路径、HomeView 用 window.location.href，
+ * 两种行为不一致（后者还会整页重载，丢掉 SPA 状态）。
+ */
+export function noteRoute(path) {
+  return `/note/${encodePath(path)}`
+}
+
 class ApiError extends Error {
   constructor(message, status, detail) {
     super(typeof message === 'string' ? message : String(message))
@@ -198,7 +210,10 @@ export const notesApi = {
     api.post('/api/notes/import', { content, title }),
   inspiration: (title, body, topK = 5) =>
     api.post('/api/notes/inspiration', { title, body, top_k: topK }),
-  archive: (path) => api.post(`/api/notes/${encodePath(path)}/archive`)
+  archive: (path) => api.post(`/api/notes/${encodePath(path)}/archive`),
+  /** 补写个人手稿（已入库但手稿为空的 B 层笔记）。 */
+  fillManuscript: (path, manuscript) =>
+    api.post('/api/notes/manuscript', { note_path: path, manuscript })
 }
 
 export const tagsApi = {

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "sync:vditor": "node scripts/sync-vditor-assets.mjs",
+    "prebuild": "npm run sync:vditor"
   },
   "dependencies": {
     "vue": "^3.4.21",
