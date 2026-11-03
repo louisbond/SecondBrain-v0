@@ -205,8 +205,11 @@ class ASRService:
     ) -> tuple[bool, str | None, str | None]:
         """执行 yt-dlp，返回 (ok, stdout, 错误信息)。"""
         cmd = [self._ytdlp_bin(), *args, url]
+        # 用 proc.run 保证不弹黑窗（yt-dlp 是控制台程序）
+        from app.core import proc as proc_mod
+
         try:
-            proc = subprocess.run(
+            proc = proc_mod.run(
                 cmd,
                 capture_output=True,
                 text=True,

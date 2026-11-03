@@ -27,7 +27,7 @@ FAILED: list[tuple[str, str]] = []
 PAGE_EXPECTATIONS: dict[str, list[str]] = {
     "/": [
         "知识图谱",
-        "今日回顾",
+        "每周回顾",
         "个人手稿",
     ],
     "/workbench": [
@@ -52,7 +52,9 @@ PAGE_EXPECTATIONS: dict[str, list[str]] = {
     "/original": [
         "创作",
         "空模板",
-        "观点卡",
+        # v32：模板换成 Obsidian 标准模板集（每日笔记/周刊/卡片/读书/会议/MOC/项目）
+        "每日笔记",
+        "卡片笔记",
         "保存为创作笔记",
     ],
     "/manage": [
@@ -208,7 +210,7 @@ def main() -> int:
         # 隔离实例的词表是空的（无笔记 → 无标签），断言在隔离环境不成立。
 
         # 侧边导航必须完整（所有页面共享）
-        for nav in ("首页", "采集区", "加工区", "原创区", "管理区", "设置"):
+        for nav in ("每周回顾", "采集区", "加工区", "原创区", "管理区", "设置"):
             if nav not in html:
                 check(f"{path} 导航完整", False, f"缺少导航项 {nav}")
                 break

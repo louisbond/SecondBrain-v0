@@ -317,9 +317,20 @@ onUnmounted(() => {
 
 <template>
   <div class="wb-page">
-    <!-- 采集在上、解析在下（不并列；状态独立成页 /status） -->
+    <!-- v32：任务状态**置顶**并放大（用户：任务状态置顶，面积调大一点）。
+         理由：采集区的第一件事是"看有哪些任务在跑/失败了"，
+         而不是先看一个粘贴框。原来状态条夹在采集与解析之间，
+         位置尴尬、还被压得很扁。 -->
     <div class="wb-col">
-      <div class="card">
+      <StatusStrip
+        :items="states"
+        :stats="stats"
+        :per-group="6"
+        class="strip-top"
+        @select="pickTask"
+      />
+
+      <div class="card card-compact">
           <div class="card-title">
             <span>⇪</span> 采集
             <span class="dim" style="font-weight:400;font-size:11.5px">
@@ -332,7 +343,7 @@ onUnmounted(() => {
           <div v-if="showQuickNote" style="margin-bottom:10px">
             <textarea
               v-model="quickNoteText"
-              rows="3"
+              rows="2"
               placeholder="随手记一段想法，直接入队列"
             ></textarea>
             <button class="btn sm" style="margin-top:8px" @click="doQuickNote">
@@ -342,7 +353,7 @@ onUnmounted(() => {
 
           <textarea
             v-model="rawText"
-            rows="5"
+            rows="2"
             placeholder="把分享文案整段粘进来（链接 / 标题 / 简介一起），自动识别平台"
           ></textarea>
           <div class="row" style="margin-top:8px">
@@ -399,14 +410,6 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-
-      <!-- ========== 中：状态横条（采集与解析之间的跳转口） ========== -->
-      <StatusStrip
-        :items="states"
-        :stats="stats"
-        :per-group="3"
-        @select="pickTask"
-      />
 
       <!-- ==================== 下：解析区 ==================== -->
       <!-- 解析区内部滚动：原文全文 + 配图 + 状态条加起来会超过一屏，
@@ -470,7 +473,7 @@ onUnmounted(() => {
             </div>
             <pre
               class="mono"
-              style="white-space:pre-wrap;max-height:320px;overflow:auto;margin:0"
+              style="white-space:pre-wrap;max-height:170px;overflow:auto;margin:0"
             >{{ content?.body || '（还没有原文）' }}</pre>
           </div>
 
@@ -529,7 +532,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* 采集区：纵向三段（采集卡 → 状态横条 → 解析区） */
+/* 采集区：纵向三段（状态条置顶 → 采集 → 解析区） */
 .wb-page {
   height: 100%;
   min-height: 0;
@@ -542,14 +545,34 @@ onUnmounted(() => {
   min-height: 0;
 }
 
+/* v32：状态条置顶后要更显眼（用户：面积调大一点）。
+   原来夹在中间被压得很扁，现在给它足够的呼吸空间。 */
+.strip-top {
+  flex: 0 0 auto;
+  padding-bottom: 4px;
+}
+
+/* 紧凑卡片：采集卡压掉一半高度（用户：采集和解析面积至少减小一半）。
+   卡片内边距 16 → 10，textarea 由 rows=5 降到 rows=2。 */
+.card-compact {
+  padding: 10px 14px;
+  margin-bottom: 0;
+}
+.card-compact :deep(.card-title) {
+  margin-bottom: 8px;
+}
+.card-compact textarea {
+  min-height: 46px;
+}
+
 /* 解析区内部滚动。
-   上半（采集卡 + 状态横条）保持不动，长内容只在下半部分滚——
+   上半（状态条 + 采集卡）保持不动，长内容只在下半部分滚——
    与加工区 .scroll-col 同一套做法（页面框架不滚，内容自己滚）。
    用 flex:1 而不是写死 calc(100vh - N)：上半高度会随「速记」展开、
    状态条条目数变化，写死的 N 迟早对不上。 */
 .wb-scroll {
   flex: 1;
-  min-height: 160px;
+  min-height: 120px;
   overflow-y: auto;
   padding-right: 6px;
 }

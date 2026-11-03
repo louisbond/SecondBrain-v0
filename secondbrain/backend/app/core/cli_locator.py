@@ -393,8 +393,13 @@ def run_cli(
     cmd.append(str(info.path))
     cmd.extend(args)
 
+    # 用 proc.run 而不是 subprocess.run：**必须不弹窗口**。
+    # 这个函数每次 provider 健康检查都会被调（codebuddy --version），
+    # 直接调 subprocess 会每隔几秒闪一个 cmd 黑框（v32 用户反馈）。
+    from app.core import proc as proc_mod
+
     try:
-        proc = subprocess.run(
+        proc = proc_mod.run(
             cmd,
             capture_output=True,
             text=True,

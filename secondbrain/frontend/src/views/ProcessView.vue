@@ -63,6 +63,35 @@ const summaryTypeLabel = computed(() => {
   return { bullets: '要点式', structured: '结构化', one_liner: '一句话' }[t] || '要点式'
 })
 
+/**
+ * AI 来源的可读名称（v32）。
+ *
+ * 坑：`ai_model` 存的是**内部 provider 名**（openai_compat / ollama /
+ * workbuddy），直接展示成 badge 就是「OPENAI_COMPAT」——
+ * 用户完全不知道这是什么（截图里右上角那个）。
+ * 现在映射成人话：「豆包 / ollama 本地 / WorkBuddy」。
+ */
+const aiModelLabel = computed(() => {
+  const m = String(current.value?.ai_model || '').toLowerCase()
+  if (!m) return ''
+  if (m.includes('openai_compat') || m.includes('ark') || m.includes('doubao')) {
+    return '豆包（火山方舟）'
+  }
+  if (m.includes('ollama')) return 'ollama 本地'
+  if (m.includes('workbuddy') || m.includes('codebuddy')) return 'WorkBuddy'
+  return m
+})
+
+/** 这条素材当前处在哪一步（可读描述，替代裸状态码）。 */
+const currentStageHint = computed(() => {
+  const s = current.value?.item?.status
+  if (s === 'raw_ready') return { text: '原文就绪 · 尚未做 AI 提取', cls: 'accent' }
+  if (s === 'pending_review') return { text: 'AI 已提取 · 等你确认', cls: '' }
+  if (s === 'ai_failed') return { text: 'AI 提取失败 · 可重试', cls: 'warn' }
+  if (s === 'extract_failed') return { text: '抓取失败 · 可重试', cls: 'warn' }
+  return { text: current.value?.item?.status || '', cls: '' }
+})
+
 // v31：采集完成后停在「原文就绪」（raw_ready），没跑过 AI。
 // 这时按钮该叫「AI 提取要点」而不是「重新分析」——语义完全不同。
 const isRawReady = computed(() => current.value?.item?.status === 'raw_ready')
@@ -445,13 +474,19 @@ onMounted(async () => {
         <template v-else>
           <!-- 上半：核准 -->
           <div class="card">
+            <!-- v32：头部重排（用户：右上角的状态显示逻辑不清晰）。
+                 原来一行里挤着：卡片标题 + 步骤说明 + 「要点式」badge
+                 + 「OPENAI_COMPAT」badge + 两个按钮 —— 技术枚举和操作
+                 混在一起，用户看不出哪个是"状态"、哪个是"能点的"。
+                 现在分三层：
+                   ① 标题行：只放标题 + 状态徽标 + 动作按钮
+                   ② 步骤行：流程提示（灰字，不抢视觉）
+                   ③ 来源行：AI 来源与摘要样式（可读中文 + tooltip） -->
             <div class="card-title">
               <span>🤖</span> 核准
-              <span class="dim" style="font-weight:400;font-size:11.5px">
-                ① 解析 → ② 加手稿 → ③ 确认分区与标签 → 入库
+              <span class="badge" :class="currentStageHint.cls">
+                {{ currentStageHint.text }}
               </span>
-              <span class="badge">{{ summaryTypeLabel }}</span>
-              <span v-if="current.ai_model" class="badge">{{ current.ai_model }}</span>
               <div class="spacer" style="flex:1"></div>
               <button
                 class="btn ghost sm"
@@ -466,6 +501,16 @@ onMounted(async () => {
                 }}
               </button>
               <button class="btn ghost sm" @click="skip">跳过本条</button>
+            </div>
+
+            <div class="step-hint">
+              ① 解析 → ② 加手稿 → ③ 确认分区与标签 → 入库
+            </div>
+
+            <div v-if="aiModelLabel" class="source-hint">
+              AI 来源：{{ aiModelLabel }}
+              <span class="sep">·</span>
+              摘要样式：{{ summaryTypeLabel }}
             </div>
 
             <input
@@ -672,6 +717,31 @@ onMounted(async () => {
 
 
 <style scoped>
+/* 步骤提示：灰字细排，不抢标题的视觉重量 */
+.step-hint {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin: -2px 0 6px;
+}
+/* AI 来源：比步骤提示更弱，用户想查的时候能找到就行 */
+.source-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.75;
+  margin-bottom: 10px;
+}
+.source-hint .sep {
+  margin: 0 5px;
+  opacity: 0.6;
+}
+.badge.accent {
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+.badge.warn {
+  color: var(--warn, #e5a23d);
+  border-color: var(--warn, #e5a23d);
+}
 /* 解析行：模板 + 字数 + 生成键同一行 */
 .parse-row {
   gap: 8px;

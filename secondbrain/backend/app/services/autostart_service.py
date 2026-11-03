@@ -25,7 +25,11 @@ IS_WINDOWS = platform.system() == "Windows"
 
 
 def _run(cmd: list[str], timeout: int = 30) -> tuple[int, str, str]:
-    """执行命令（Windows 下用 CREATE_NO_WINDOW 避免弹黑框）。"""
+    """执行命令（统一走 app.core.proc：Windows 下不弹黑框）。"""
+    # v32：改用 app.core.proc.run —— 它统一处理 CREATE_NO_WINDOW，
+    # 避免每个模块自己拼 creationflags（漏一处就闪黑窗）。
+    from app.core import proc as proc_mod
+
     kwargs: dict[str, Any] = {
         "capture_output": True,
         "text": True,
@@ -33,10 +37,8 @@ def _run(cmd: list[str], timeout: int = 30) -> tuple[int, str, str]:
         "encoding": "utf-8",
         "errors": "replace",
     }
-    if IS_WINDOWS:
-        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
-        proc = subprocess.run(cmd, **kwargs)
+        proc = proc_mod.run(cmd, **kwargs)
         return proc.returncode, proc.stdout or "", proc.stderr or ""
     except FileNotFoundError:
         return 127, "", f"命令不存在：{cmd[0]}"

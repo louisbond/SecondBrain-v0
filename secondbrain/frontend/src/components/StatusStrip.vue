@@ -128,37 +128,40 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* v32：置顶后放大（用户：任务状态置顶，面积调大一点）。
+   原来是夹在采集与解析之间的一个细条，padding 8/12、字号 11.5，
+   看着像页脚。现在它是采集区的第一眼信息，给足空间。 */
 .status-strip {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--bg-soft, rgba(255, 255, 255, 0.02));
-  padding: 8px 12px 10px;
+  padding: 12px 16px 14px;
 }
 .strip-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 .strip-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 650;
 }
 .strip-body {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 14px;
-  align-items: center;
+  gap: 12px 18px;
+  align-items: flex-start;
 }
 .strip-group {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: nowrap;
+  gap: 7px;
+  flex-wrap: wrap;
 }
 .strip-badge {
-  font-size: 11.5px;
-  padding: 1px 8px;
+  font-size: 12px;
+  padding: 3px 10px;
   border-radius: 999px;
   border: 1px solid var(--line);
   color: var(--text-dim);
@@ -177,13 +180,13 @@ onUnmounted(() => {
   border-color: var(--accent-border);
 }
 .strip-item {
-  font-size: 11.5px;
-  padding: 2px 9px;
+  font-size: 12.5px;
+  padding: 4px 11px;
   border-radius: 999px;
   background: var(--bg-hover);
   color: var(--text-dim);
   cursor: pointer;
-  max-width: 190px;
+  max-width: 230px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -193,7 +196,7 @@ onUnmounted(() => {
   background: var(--accent-soft);
 }
 .strip-more {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--accent);
   cursor: pointer;
 }

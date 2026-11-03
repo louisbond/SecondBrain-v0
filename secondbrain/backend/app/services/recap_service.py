@@ -212,6 +212,11 @@ class RecapService:
             "ok": True,
             "path": path.as_posix(),
             "period": [start, end],
+            # v32：前端要直接展示周报正文（不用再单独读文件），
+            # 也给一个可读的周标签（2026-W45）。
+            "week": f"{iso_year}-W{iso_week:02d}",
+            "week_label": f"{start} ~ {end}",
+            "body": body,
             "collected": collected,
             "reviewed": reviewed,
             "created": created,

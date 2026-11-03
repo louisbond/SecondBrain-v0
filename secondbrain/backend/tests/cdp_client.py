@@ -207,6 +207,25 @@ class Browser:
             raise RuntimeError(f"JS 异常: {desc}")
         return res.get("result", {}).get("value")
 
+    async def screenshot(self, path: str) -> str:
+        """整页截图存到 path（PNG）。返回写入的路径。
+
+        用途：**视觉验收**。布局类改动（面积、留白、对齐）光看 DOM 尺寸
+        判断不了好不好看，必须真的看一眼。
+        """
+        import base64
+        from pathlib import Path as _P
+
+        res = await self.send(
+            "Page.captureScreenshot",
+            {"format": "png", "captureBeyondViewport": False},
+        )
+        data = res.get("data") or ""
+        out = _P(path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(base64.b64decode(data))
+        return str(out)
+
     async def wait_for(self, expression: str, timeout: float = 12.0, interval: float = 0.25) -> bool:
         """轮询直到表达式为真。"""
         deadline = time.time() + timeout

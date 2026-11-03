@@ -12,7 +12,7 @@ import { createRouter, createWebHistory } from 'vue-router'
  *                               从采集区/加工区的状态横条「全部 →」跳入）
  */
 const routes = [
-  { path: '/', name: 'home', component: () => import('@/views/HomeView.vue'), meta: { title: '首页' } },
+  { path: '/', name: 'home', component: () => import('@/views/HomeView.vue'), meta: { title: '每周回顾' } },
   {
     path: '/workbench',
     name: 'workbench',

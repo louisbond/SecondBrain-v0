@@ -56,8 +56,11 @@ class YtDlpAdapter(Adapter):
             cmd.extend(["--add-header", f"Cookie:{self.cookie}"])
         cmd.append(url)
 
+        # 用 proc.run 保证不弹黑窗
+        from app.core import proc as proc_mod
+
         try:
-            proc = subprocess.run(
+            proc = proc_mod.run(
                 cmd,
                 capture_output=True,
                 text=True,

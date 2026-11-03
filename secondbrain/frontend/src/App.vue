@@ -19,7 +19,10 @@ const toastHost = ref(null)
 const refreshSignal = ref(0)
 
 const navItems = [
-  { to: '/', icon: '⌂', label: '首页' },
+  // v32：一级导航第一项从「首页」改成「每周回顾」。
+  // 用户：「左下角（一级导航）改成每周回顾算了，首页那个去掉」。
+  // 路由仍是 /（HomeView 已改造：周回顾为主，搜索/图谱保留在下方）。
+  { to: '/', icon: '◷', label: '每周回顾' },
   { to: '/workbench', icon: '⇪', label: '采集区' },
   { to: '/process', icon: '✓', label: '加工区' },
   { to: '/original', icon: '✎', label: '原创区' },

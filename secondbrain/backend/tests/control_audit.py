@@ -43,7 +43,7 @@ def info(msg: str) -> None:
 
 # 页面 → 该页值得点/看的控件选择器
 PAGES: list[tuple[str, str, list[str]]] = [
-    ("/", "首页", [".tabs .tab", ".btn", ".check-chip", ".tree-toggle"]),
+    ("/", "每周回顾", [".tabs .tab", ".btn", ".check-chip", ".tree-toggle"]),
     ("/workbench", "采集区", [".btn", ".check-chip"]),
     ("/process", "加工区", [".btn", ".check-chip", ".tree-toggle", ".queue-chip"]),
     ("/original", "原创区", [".btn", ".check-chip"]),
@@ -208,20 +208,29 @@ async def main(base: str) -> int:
             (b.page_errors[0][:150] if b.page_errors else ""),
         )
 
-        # 点「观点卡」模板 → 骨架必须真的写进编辑器
+        # 点「卡片笔记」模板（Obsidian 标准模板集）→ 骨架必须真的写进编辑器
         b.page_errors.clear()
-        await b.click_text(".content .btn", "观点卡")
+        await b.click_text(".content .btn", "卡片笔记")
         await asyncio.sleep(2.0)
         sv_text = await b.eval(
             """(() => {
-              const sv = document.querySelector('.vditor-host .vditor-sv');
-              return sv ? sv.innerText.replace(/\\s+/g, ' ').trim().slice(0, 80) : '';
+              // sv 模式的内容在 pre.vditor-sv（源码面板），
+              // 不是 [contenteditable]（那是 wysiwyg，sv 模式下是空的）
+              const sv = document.querySelector('pre.vditor-sv')
+                       || document.querySelector('.vditor-host .vditor-sv');
+              return sv ? sv.innerText.replace(/\\s+/g, ' ').trim().slice(0, 120) : '';
             })()"""
         )
         check(
             "原创区模板能写入编辑器",
-            "我的核心观点" in sv_text,
-            f"编辑器内容: {sv_text[:60]!r}",
+            # 卡片笔记模板的第一节标题（Obsidian Zettelkasten 惯例）
+            "一句话观点" in sv_text,
+            f"编辑器内容: {sv_text[:70]!r}",
+        )
+        check(
+            "模板占位符已替换（{{date}} → 真实日期）",
+            "{{" not in sv_text,
+            f"残留占位符: {sv_text[:70]!r}",
         )
         check(
             "写模板时无报错",
@@ -229,20 +238,22 @@ async def main(base: str) -> int:
             (b.page_errors[0][:150] if b.page_errors else ""),
         )
 
-        # 专项：首页回顾卡片必须有真实内容（曾恒为空）
+        # 专项：每周回顾卡片必须有真实内容（曾恒为空）
         print("\n── 专项：首页回顾卡片 ──")
         b.page_errors.clear()
         await b.goto(f"{base}/", settle=2.2)
         recap = await b.eval(
             """(() => {
               const c = [...document.querySelectorAll('.content .card')]
-                .find(x => (x.innerText||'').includes('今日回顾'));
+                .find(x => (x.innerText||'').includes('每周回顾'));
               return c ? c.innerText.trim().replace(/\\n+/g, ' | ') : '(没找到)';
             })()"""
         )
         check(
-            "首页回顾卡片有内容",
-            "昨日采集" in recap and "待补手稿" in recap,
+            "每周回顾卡片有内容",
+            # v32：卡片从「今日回顾」升级为「每周回顾」，
+            # 统计项改成 本周采集/入库/创作/待核准，并带「生成本周周报」入口。
+            "本周采集" in recap and "待补手稿" in recap and "生成本周周报" in recap,
             recap[:110],
         )
 

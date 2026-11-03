@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -2400,3 +2401,72 @@ class TestASRSimplifiedOutput:
         assert trad_ratio("這是繁體字") > 0.5
         # 中英混排时只按汉字算
         assert trad_ratio("hello world") == 0.0
+
+
+class TestNoConsoleWindow:
+    """v32：所有后台子进程都**不能弹黑窗**。
+
+    回归背景：用户反馈「还是跳黑窗，但几秒后就自动关了，运行期间还会有个
+    小于 1s 的窗口闪退」。
+
+    根因：散落各处的 `subprocess.run` 没加 CREATE_NO_WINDOW。
+    最典型的是 `cli_locator.run_cli()` —— 每次 AI provider 健康检查都调
+    `codebuddy --version`，于是**每隔几秒闪一个 cmd 窗口**。
+
+    Windows 上子进程默认会自己申请控制台（父进程是 windowed 应用时），
+    必须显式 CREATE_NO_WINDOW 才能彻底不弹。
+    """
+
+    def test_proc_helper_sets_no_window(self):
+        from app.core import proc
+
+        flags = proc._no_window_flags()
+        if sys.platform == "win32":
+            assert flags == getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            assert flags != 0, "Windows 上必须给 CREATE_NO_WINDOW"
+
+    def test_proc_run_actually_suppresses_window(self, monkeypatch):
+        """proc.run 要把 creationflags 传给 subprocess.run。"""
+        import app.core.proc as proc_mod
+
+        captured = {}
+
+        def fake_run(cmd, **kw):
+            captured.update(kw)
+            return None
+
+        monkeypatch.setattr(proc_mod.subprocess, "run", fake_run)
+        proc_mod.run(["echo", "hi"], capture_output=True)
+
+        if sys.platform == "win32":
+            assert captured.get("creationflags"), "没传 creationflags"
+        # stdin 必须 DEVNULL：后台服务没有终端，否则子进程会等输入
+        assert captured.get("stdin") == subprocess.DEVNULL
+
+    def test_no_bare_subprocess_without_flags(self):
+        """静态检查：app/ 里不该有裸 subprocess.run（都该走 proc 工具）。
+
+        例外：`cli_locator.open_login_window()` 里那几个 Popen 是**故意要
+        窗口**的（登录是交互流程），它自己带 CREATE_NEW_CONSOLE。
+        """
+        import re
+        from pathlib import Path
+
+        app_dir = Path(__file__).resolve().parent.parent / "app"
+        offenders: list[str] = []
+        for py in app_dir.rglob("*.py"):
+            if py.name in ("proc.py",):
+                continue
+            text = py.read_text(encoding="utf-8")
+            for m in re.finditer(r"subprocess\.run\(", text):
+                # 允许注释/文档字符串里提到
+                line_start = text.rfind("\n", 0, m.start()) + 1
+                line_end = text.find("\n", m.start())
+                line = text[line_start:line_end]
+                if line.strip().startswith(("#", '"""', "*", "'")):
+                    continue
+                offenders.append(f"{py.relative_to(app_dir)}: {line.strip()}")
+        assert not offenders, (
+            "这些地方直接调了 subprocess.run，会闪黑窗；"
+            f"请改用 app.core.proc.run：{offenders}"
+        )

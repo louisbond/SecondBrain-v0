@@ -23,64 +23,215 @@ let editor = null
 let editorReady = null
 let inspirationTimer = null
 
-// 空数据模板：给一个骨架（标题占位 + 建议分区/标签），填了详情就能归档
+// 空数据模板（v32：换成 Obsidian 标准模板）
+//
+// 依据 Obsidian 生态的通行写法：
+//   · **不写 YAML frontmatter** —— 后端 create_note 会自己生成
+//     （title/type/tags/partitions/created），正文里再写一段 --- 会变成
+//     双重 frontmatter，Obsidian 打开就不认了。
+//   · 用 Obsidian 的占位符语法 `{{date}}` `{{time}}` `{{title}}`，
+//     应用模板时替换成真实值（见 applyTemplate）。
+//   · 支持 `[[双链]]`：后端会把正文里的 wikilink 抽成 citations。
+//   · 结构照社区惯例（Daily Note / Weekly Review / Zettelkasten /
+//     Book Note / Meeting / MOC / Project）。
 const templates = [
   {
-    id: 'insight-card',
-    name: '观点卡',
-    sections: `## 我的核心观点
+    id: 'daily-note',
+    name: '每日笔记',
+    desc: 'Obsidian Daily Note 惯例：当日记录 + 待办 + 随想',
+    sections: `# {{date}}
 
-## 为什么这么想
+## 今天要做的
+- [ ] 
 
-## 反例与边界
+## 记录
+
+
+## 随想
+
+
+## 关联
+- [[ ]]
 `,
-    suggest_tags: ['原创'],
-    suggest_partition: ''
-  },
-  {
-    id: 'reading-note',
-    name: '读书笔记',
-    sections: `## 书名/作者
-
-## 三个触动点
-
-## 行动项
-`,
-    suggest_tags: ['读书'],
+    suggest_tags: ['日记'],
     suggest_partition: ''
   },
   {
     id: 'weekly-review',
-    name: '个人周记',
-    sections: `## 本周做成的事
+    name: '周回顾',
+    desc: '一周复盘：做成什么、卡在哪、下周重点',
+    sections: `# {{date}} 周回顾
+
+## 本周做成的事
+
 
 ## 卡住的地方
 
+
+## 学到的东西
+
+
 ## 下周最重要的一件事
+- [ ] 
+
+## 本周笔记
+- [[ ]]
 `,
     suggest_tags: ['复盘'],
     suggest_partition: ''
   },
   {
-    id: 'decision-log',
-    name: '决策记录',
-    sections: `## 要决定什么
+    id: 'zettel',
+    name: '卡片笔记',
+    desc: 'Zettelkasten 永久笔记：一个想法一张卡，用自己的话写',
+    sections: `# {{title}}
 
-## 备选项
+## 一句话观点
 
-## 选了哪个、为什么
+
+## 我的论证
+
+
+## 反例与边界
+
+
+## 与哪些笔记相连
+- [[ ]]
 `,
-    suggest_tags: ['决策'],
+    suggest_tags: ['卡片'],
     suggest_partition: ''
   },
   {
-    id: 'blank',
-    name: '空白页',
-    sections: '',
-    suggest_tags: [],
+    id: 'book-note',
+    name: '读书笔记',
+    desc: '书目元信息 + 触动点 + 行动项',
+    sections: `# 《书名》
+
+- 作者：
+- 读完日期：{{date}}
+- 评分：/10
+
+## 这本书在讲什么
+
+
+## 三个触动点
+1. 
+2. 
+3. 
+
+## 我要改变的
+- [ ] 
+
+## 摘抄
+
+
+## 相关
+- [[ ]]
+`,
+    suggest_tags: ['读书'],
+    suggest_partition: ''
+  },
+  {
+    id: 'meeting',
+    name: '会议记录',
+    desc: '时间地点人 + 结论 + 待办（带负责人）',
+    sections: `# {{date}} 会议
+
+- 参与人：
+- 主题：
+
+## 结论
+
+
+## 待办
+- [ ] （负责人 / 截止日）
+
+## 讨论要点
+
+
+## 关联
+- [[ ]]
+`,
+    suggest_tags: ['会议'],
+    suggest_partition: ''
+  },
+  {
+    id: 'moc',
+    name: '内容地图 MOC',
+    desc: 'Map of Content：把一个主题下的笔记串成索引',
+    sections: `# {{title}} · 内容地图
+
+## 这个主题是什么
+
+
+## 入口笔记
+- [[ ]]
+
+## 分支
+### 
+- [[ ]]
+
+## 待补的空白
+
+`,
+    suggest_tags: ['索引'],
+    suggest_partition: ''
+  },
+  {
+    id: 'project',
+    name: '项目笔记',
+    desc: '目标 / 现状 / 下一步 / 风险',
+    sections: `# {{title}}
+
+- 起止：{{date}} →
+- 状态：进行中
+
+## 目标
+
+
+## 现状
+
+
+## 下一步
+- [ ] 
+
+## 风险与依赖
+
+
+## 相关
+- [[ ]]
+`,
+    suggest_tags: ['项目'],
     suggest_partition: ''
   }
 ]
+
+/**
+ * 替换 Obsidian 占位符。
+ *
+ * 支持 `{{date}}` / `{{time}}` / `{{title}}`，
+ * 也支持 Obsidian 核心模板的带格式写法 `{{date:YYYY-MM-DD}}`。
+ * 这里只实现最常用的三个日期格式，够日常用。
+ */
+function fillPlaceholders(text) {
+  const now = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const ymd = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  const hm = `${pad(now.getHours())}:${pad(now.getMinutes())}`
+  return String(text || '')
+    .replace(/\{\{\s*date\s*(?::\s*([^}]+))?\s*\}\}/g, (_m, fmt) => {
+      if (!fmt) return ymd
+      // 只支持 Obsidian 最常用的几个格式串
+      return String(fmt)
+        .replace(/YYYY/g, String(now.getFullYear()))
+        .replace(/MM/g, pad(now.getMonth() + 1))
+        .replace(/DD/g, pad(now.getDate()))
+        .replace(/HH/g, pad(now.getHours()))
+        .replace(/mm/g, pad(now.getMinutes()))
+    })
+    .replace(/\{\{\s*time\s*\}\}/g, hm)
+    .replace(/\{\{\s*title\s*\}\}/g, draftTitle.value.trim() || '未命名')
+}
 
 /** 应用空模板：生成骨架，便于填详情 + 分区。 */
 function applyTemplate(tpl) {
@@ -88,7 +239,7 @@ function applyTemplate(tpl) {
   if (!draftTitle.value && tpl.name !== '空白页') {
     draftTitle.value = tpl.name + '·'
   }
-  if (tpl.sections) setEditorValue(tpl.sections)
+  if (tpl.sections) setEditorValue(fillPlaceholders(tpl.sections))
   for (const t of tpl.suggest_tags) {
     if (!draftTags.value.includes(t)) draftTags.value.push(t)
   }
