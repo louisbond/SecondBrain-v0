@@ -30,7 +30,11 @@ const items = [
   ['js/i18n/zh_CN.js', 'dist/js/i18n/zh_CN.js'],
   ['js/i18n/en_US.js', 'dist/js/i18n/en_US.js'],
   ['js/icons/ant.js', 'dist/js/icons/ant.js'],
-  ['images/emoji', 'dist/images/emoji']
+  ['images/emoji', 'dist/images/emoji'],
+  // v36：深色主题的**预览区内容样式**。
+  // Vditor 的 `preview.theme.current = 'dark'` 会去
+  // {cdn}/dist/css/content-theme/dark.css 取这个文件，缺了右侧预览还是白底。
+  ['css/content-theme/dark.css', 'dist/css/content-theme/dark.css']
 ]
 
 for (const [from, to] of items) {

@@ -107,6 +107,22 @@ const canRetry = computed(() => {
 })
 
 /**
+ * 转写正文按行切分（v36：用户要求「转写区要有行标」）。
+ *
+ * 为什么不用一个 <pre> 里塞全文、旁边画一条行号列：
+ * `white-space: pre-wrap` 下长行会折行，行号就与实际视觉行错位了。
+ * 每行一个 flex 行（行号 + 文本）能保证**行号永远对着逻辑行**，
+ * 折行只是这一行的第二视觉行，符合代码编辑器的常规手感。
+ */
+const bodyLines = computed(() => {
+  const body = content.value?.body
+  if (!body) return ['（还没有原文）']
+  return String(body).replace(/\r\n/g, '\n').split('\n')
+})
+
+const bodyCharCount = computed(() => (content.value?.body || '').length)
+
+/**
  * 重试当前任务（v31：采集区直接重试，不用跳去状态页）。
  *
  * 后端 /api/items/{id}/retry 会按状态决定重跑哪一段：
@@ -317,10 +333,7 @@ onUnmounted(() => {
 
 <template>
   <div class="wb-page">
-    <!-- v32：任务状态**置顶**并放大（用户：任务状态置顶，面积调大一点）。
-         理由：采集区的第一件事是"看有哪些任务在跑/失败了"，
-         而不是先看一个粘贴框。原来状态条夹在采集与解析之间，
-         位置尴尬、还被压得很扁。 -->
+    <!-- 任务状态置顶（v32：用户要求置顶并放大；v35 改成四行纵向） -->
     <div class="wb-col">
       <StatusStrip
         :items="states"
@@ -330,26 +343,34 @@ onUnmounted(() => {
         @select="pickTask"
       />
 
-      <!-- 采集在上、解析在下（v35：用户说解析好像没作用，合并到采集下方） -->
-      <div class="card card-compact">
-          <div class="card-title">
-            <span>⇪</span> 采集
-            <span class="dim" style="font-weight:400;font-size:11.5px">
-              粘贴即入库
-            </span>
+      <!--
+        v36：采集与解析**真正合成一张卡**。
+
+        用户："采集和解析没有合并啊，合并后不要太占空间"。
+        v35 只是把解析从右栏挪到采集下方，仍是两张独立的卡 ——
+        视觉上还是两个模块、两条边框、两份内边距。现在：
+        一个 .card = 采集段 + 虚线分隔 + 解析段，整卡内部滚动。
+      -->
+      <div class="wb-scroll">
+        <div class="card wb-merge" :class="{ 'wb-merge--empty': !current }">
+          <!-- ==================== 采集 ==================== -->
+          <div class="mb-head">
+            <span class="mb-icon">⇪</span>
+            <span class="mb-title">采集</span>
+            <span class="dim mb-hint">粘贴即入库</span>
             <div class="spacer" style="flex:1"></div>
-            <button class="btn ghost sm" @click="showQuickNote = !showQuickNote">速记</button>
+            <button class="btn ghost sm" @click="showQuickNote = !showQuickNote">
+              速记
+            </button>
           </div>
 
-          <div v-if="showQuickNote" style="margin-bottom:10px">
+          <div v-if="showQuickNote" class="mb-quicknote">
             <textarea
               v-model="quickNoteText"
               rows="2"
               placeholder="随手记一段想法，直接入队列"
             ></textarea>
-            <button class="btn sm" style="margin-top:8px" @click="doQuickNote">
-              加入队列
-            </button>
+            <button class="btn sm" @click="doQuickNote">加入队列</button>
           </div>
 
           <textarea
@@ -357,47 +378,26 @@ onUnmounted(() => {
             rows="2"
             placeholder="把分享文案整段粘进来（链接 / 标题 / 简介一起），自动识别平台"
           ></textarea>
-          <div class="row" style="margin-top:8px">
-            <!--
-              v31：合并「智能解析」+「入库」为一个动作。
-              解析只是预览，用户拿到的最终结果都是"提交入库"，
-              分两步点等于让人多点一次、还得多想一次"我现在到哪一步了"。
-              现在一键：解析 → 立即提交。
-              解析结果仍然展示在下方（能看清抓到了什么、有没有重复）。
-            -->
+
+          <div class="row mb-actions">
             <button
               class="btn primary"
               :disabled="parsing || submitting || !rawText.trim()"
               @click="parseAndSubmit"
             >
-              {{
-                parsing
-                  ? '解析中…'
-                  : submitting
-                    ? '入库中…'
-                    : '解析并入库'
-              }}
+              {{ parsing ? '解析中…' : submitting ? '入库中…' : '解析并入库' }}
             </button>
+            <span v-if="parsed" class="dim mb-count">
+              识别到 {{ parsed.count }} 条{{ submitting ? '，正在入库…' : '' }}
+            </span>
             <div class="spacer" style="flex:1"></div>
-            <button
-              v-if="dupCount"
-              class="btn ghost sm"
-              @click="removeDuplicates"
-            >
+            <button v-if="dupCount" class="btn ghost sm" @click="removeDuplicates">
               去掉重复 {{ dupCount }}
             </button>
           </div>
 
-          <div v-if="parsed" style="margin-top:10px">
-            <div class="dim" style="font-size:11.5px;margin-bottom:6px">
-              识别到 {{ parsed.count }} 条{{ submitting ? '，正在入库…' : '' }}
-            </div>
-            <div
-              v-for="(it, i) in items"
-              :key="i"
-              class="list-item"
-              style="cursor:pointer"
-            >
+          <div v-if="parsed && items.length" class="mb-parsed">
+            <div v-for="(it, i) in items" :key="i" class="list-item mb-parsed-row">
               <span
                 class="platform-dot"
                 :style="{ background: platformOf(it.platform).color }"
@@ -410,83 +410,76 @@ onUnmounted(() => {
               <button class="btn ghost sm" @click.stop="removeItem(i)">×</button>
             </div>
           </div>
-      </div>
 
-      <!-- ==================== 下：解析（含配图） ==================== -->
-      <!-- v35：解析从右栏挪到**采集下方**（用户：解析好像没作用，合并到采集下方）。
-           配图也并进同一个卡片（用户：配图减少面积，和转写合并）——
-           原来配图单独占一张卡，输入框还占两行，纯浪费高度。 -->
-      <div class="wb-scroll">
-          <div v-if="!current" class="card empty">
-            <div class="icon">▤</div>
-            <div>选一条任务开始解析</div>
+          <!-- ==================== 解析（同一张卡） ==================== -->
+          <div class="mb-split"></div>
+
+          <div v-if="!current" class="mb-empty dim">
+            ▤ 解析 — 选一条任务开始（点上面的任务，或去
+            <a href="/status">状态页</a>）
           </div>
 
-        <template v-else>
-          <div class="card">
-            <div class="card-title">
-              <span>▤</span> 解析
-              <div class="spacer" style="flex:1"></div>
+          <template v-else>
+            <div class="mb-head">
+              <span class="mb-icon">▤</span>
+              <span class="mb-title">解析</span>
               <span class="badge" :class="stateClass(current.state)">
                 {{ current.stage }}
               </span>
-              <!--
-                v31：失败任务在采集区**直接重试**，不用跳去状态页。
-                用户反馈「采集区解析失败后竟不支持重新解析」——
-                这里原来只有状态标签，没有任何可点的动作。
-              -->
+              <div class="spacer" style="flex:1"></div>
+              <span v-if="loadingContent" class="dim mb-hint">加载中…</span>
               <button
                 v-if="current.state === 'fail' || canRetry"
                 class="btn ghost sm"
-                style="margin-left:8px"
                 :disabled="retrying"
                 @click="retryCurrent"
               >
                 {{ retrying ? '重试中…' : '重试' }}
               </button>
             </div>
-            <div style="font-size:15px;font-weight:600;margin-bottom:4px">
-              {{ current.title }}
-            </div>
-            <div class="dim mono" style="font-size:11.5px">
-              {{ current.source_url || '速记' }} · 原文 {{ current.raw_len }} 字
+
+            <div class="mb-cur">
+              <span class="mb-cur-title">{{ current.title }}</span>
+              <span class="dim mono mb-cur-meta">
+                {{ current.source_url || '速记' }} · 原文 {{ current.raw_len }} 字
+              </span>
             </div>
 
-            <!-- 失败原因（原来只在状态页能看到，这里补上） -->
-            <div v-if="current.error_detail" class="alert warn" style="margin-top:10px">
+            <div v-if="current.error_detail" class="alert warn mb-err">
               {{ current.error_detail }}
             </div>
 
-            <!-- 解析生成已归入「加工区」 -->
-            <div class="alert info" style="margin-top:10px;font-size:12px">
-              按模板生成解析稿（可选字数，≥800 字）请去
-              <a href="/process">加工区</a>；这里可以直接「重试」跑一次 AI 提取要点。
-            </div>
-          </div>
-
-          <!-- 原文 / 转写（v35：配图并进这张卡，不再单独占一张） -->
-          <div class="card">
-            <div class="card-title">
-              <span>📄</span> {{ current.asr ? '语音转写全文' : '原始字幕 / 正文' }}
-              <span class="badge">{{ (content?.body || '').length }} 字</span>
+            <div class="mb-body-label">
+              <span>{{ current.asr ? '📄 语音转写' : '📄 原文' }}</span>
+              <span class="badge">{{ bodyLines.length }} 行</span>
+              <span class="badge">{{ bodyCharCount }} 字</span>
               <div class="spacer" style="flex:1"></div>
-              <span v-if="loadingContent" class="dim">加载中…</span>
+              <a class="mb-goto" href="/process">按模板生成 → 加工区</a>
             </div>
-            <pre
-              class="mono"
-              style="white-space:pre-wrap;max-height:200px;overflow:auto;margin:0"
-            >{{ content?.body || '（还没有原文）' }}</pre>
 
-            <!-- 配图工具栏：一行放下，不再单独占一张卡 -->
+            <!-- 转写正文：**带行号**（v36 用户要求） -->
+            <div class="code-box">
+              <div v-for="(ln, i) in bodyLines" :key="i" class="code-line">
+                <span class="code-ln">{{ i + 1 }}</span>
+                <span class="code-lt">{{ ln }}</span>
+              </div>
+            </div>
+
+            <!-- 配图工具栏（v35 并进同一张卡；v36 保留一行） -->
             <div class="shot-bar">
               <span class="shot-label">🖼 配图 {{ shots.length }}</span>
-              <label class="row" style="margin:0;flex:0 0 auto">
+              <label class="row shot-pos">
                 第
-                <input v-model.number="shotPosition" type="number" min="0" style="width:50px" />
+                <input v-model.number="shotPosition" type="number" min="0" />
                 段
               </label>
               <input v-model="shotCaption" type="text" placeholder="图注" class="shot-in" />
-              <input v-model="shotUrl" type="text" placeholder="图片地址 / 选文件" class="shot-in" />
+              <input
+                v-model="shotUrl"
+                type="text"
+                placeholder="图片地址 / 选文件"
+                class="shot-in"
+              />
               <input type="file" accept="image/*" class="shot-file" @change="onPickFile" />
               <button class="btn sm" :disabled="shotBusy" @click="insertShot">
                 {{ shotBusy ? '插入中…' : '插入' }}
@@ -503,16 +496,15 @@ onUnmounted(() => {
                 {{ s }} ×
               </span>
             </div>
-          </div>
-
-        </template>
+          </template>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 采集区：纵向三段（状态条置顶 → 采集 → 解析区） */
+/* 采集区：状态条置顶 + 下方一张合并卡（采集 + 解析） */
 .wb-page {
   height: 100%;
   min-height: 0;
@@ -525,50 +517,202 @@ onUnmounted(() => {
   min-height: 0;
 }
 
-/* v32：状态条置顶后要更显眼（用户：面积调大一点）。
-   原来夹在中间被压得很扁，现在给它足够的呼吸空间。 */
+/* 状态条置顶后要更显眼（用户：面积调大一点） */
 .strip-top {
   flex: 0 0 auto;
   padding-bottom: 4px;
 }
 
-/* 紧凑卡片：采集卡只占必要高度（用户要求面积减小）。
-   卡片内边距 16 → 10，textarea 由 rows=5 降到 rows=2。 */
-.card-compact {
-  padding: 10px 14px;
-  margin-bottom: 0;
-  flex: 0 0 auto;
-}
-.card-compact :deep(.card-title) {
-  margin-bottom: 8px;
-}
-.card-compact textarea {
-  min-height: 46px;
-}
-
-/* 解析区：吃掉剩余高度，内部滚动。 */
+/* 合并卡所在的可滚区域 */
 .wb-scroll {
   flex: 1;
   min-height: 120px;
-  overflow-y: auto;
+  /* v36：改成 flex 列 + 卡片吃满剩余高度 —— 这样「状态条 + 合并卡」
+     正好一屏，不用滚一下才看到配图行（用户：合并后不要太占空间）。
+     用 flex 而不是写死 max-height：窗口高度变了也不会有残留滚动条。 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding-right: 6px;
 }
 
-/* 配图工具栏（v35：并进转写卡，压成一行）
-   原来配图单独一张卡 + 输入框换两行，白占 ~130px。 */
+/* ===== 合并卡（v36）：采集段 + 解析段共用一张卡 =====
+   省掉第二张卡的边框 + 内边距 + 标题行，约省 80~100px 竖向空间。 */
+.wb-merge {
+  padding: 10px 14px 12px;
+  margin-bottom: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+/* 没选任务：卡片只占内容高，不撑满屏幕（否则一张大空卡） */
+.wb-merge--empty {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.wb-merge textarea {
+  min-height: 46px;
+}
+
+.mb-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  min-height: 24px;
+}
+.mb-icon {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.mb-title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.mb-hint {
+  font-size: 11.5px;
+  font-weight: 400;
+}
+.mb-actions {
+  margin-top: 8px;
+  align-items: center;
+}
+.mb-count {
+  font-size: 11.5px;
+  margin-left: 2px;
+}
+.mb-quicknote {
+  margin-bottom: 8px;
+}
+.mb-quicknote .btn {
+  margin-top: 6px;
+}
+
+/* 采集预览列表：限高内滚，避免把解析段挤下去 */
+.mb-parsed {
+  margin-top: 8px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+.mb-parsed-row {
+  padding: 4px 2px;
+}
+
+/* 采集段与解析段之间的分隔线（不新增卡片） */
+.mb-split {
+  margin: 12px -14px 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.mb-empty {
+  font-size: 12.5px;
+  padding: 14px 2px 6px;
+}
+
+/* 解析段的当前任务 */
+.mb-cur {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.mb-cur-title {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.mb-cur-meta {
+  font-size: 11.5px;
+}
+.mb-err {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.mb-body-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin: 10px 0 6px;
+}
+.mb-goto {
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+/* ===== 转写正文 + 行号（v36） =====
+   行号固定宽右对齐，正文 flex:1 自动换行。
+   长内容**卡内滚动**（max-height 38vh），不把整页推到几屏高。 */
+.code-box {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-soft, rgba(255, 255, 255, 0.02));
+  /* v36：**吃掉卡片剩余高度**（不是写死 max-height）。
+     上面给 .wb-merge 设了 flex 列，这里 flex:1 就能自动适配窗口高度：
+     高一点的屏幕看到更多行，矮一点的屏幕少几行但整页不滚。
+     min-height 保证再矮也至少能看 6 行。 */
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow: auto;
+  padding: 6px 0;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+.code-line {
+  display: flex;
+  gap: 10px;
+  padding: 0 10px 0 0;
+}
+.code-line:hover {
+  background: var(--bg-hover);
+}
+.code-ln {
+  flex: 0 0 38px;
+  text-align: right;
+  color: var(--text-dim);
+  opacity: 0.55;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.code-lt {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+/* 空行也要占一行高度 */
+.code-lt:empty::before {
+  content: '\00a0';
+}
+
+/* 配图工具栏：一行放下 */
 .shot-bar {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 8px;
   align-items: center;
-  margin-top: 8px;
+  margin-top: 10px;
   padding-top: 8px;
   border-top: 1px dashed var(--line);
+  flex: 0 0 auto;
 }
 .shot-label {
   font-size: 12px;
   color: var(--text-dim);
   flex: 0 0 auto;
+}
+.shot-pos {
+  margin: 0;
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+.shot-pos input {
+  width: 46px;
 }
 .shot-in {
   flex: 1 1 130px;

@@ -173,6 +173,63 @@ const templates = [
 `,
     suggest_tags: ['模板'],
     suggest_partition: ''
+  },
+  {
+    // v36：参考用户库里 `Systems666/ChaoNaoKu/基本概念.md` 的**常用部分**。
+    // 那份笔记是 Obsidian 语法速查（属性 / 标题 / 文本 / 格式四段），
+    // 平时写东西要对着抄，所以做成模板 —— 点一下就把速查表铺进编辑器，
+    // 边写边照。
+    //
+    // 只挑了**日常真会用到**的：属性、1~3 级标题、加粗/斜体/标黄/删除线、
+    // 双链/别名链接、无序/有序/打卡列表、分隔线。
+    // 表格那一段是原笔记没有的（它用空格对齐演示），这里换成 Markdown 表格，
+    // 预览里看得更清楚。
+    id: 'cheatsheet',
+    name: '基本概念',
+    desc: 'Obsidian 语法速查（参考 ChaoNaoKu/基本概念.md 的常用部分）',
+    sections: `# {{title}}
+
+> 速查表：左边是写法，右边是效果。点「源码」看原文照抄。
+
+## 笔记属性
+
+放在**文件开头**，三个减号包起来（本库由系统自动生成，手写会重复，别加）。
+可用字段：\`aliases\`（别名，可多个）、\`tags\`（标签）、\`cssclasses\`（样式）、
+以及任意自定义字段（文本 / 时间 / 数字 / 列表）。
+
+## 标题
+
+\`# 一级\` → 一级（本行上面那个就是）
+
+\`## 二级\`、\`### 三级\` …… 最多六级。**井号后面必须跟一个空格**。
+
+## 文本
+
+| 写法 | 效果 |
+|---|---|
+| \`*斜体*\` | *斜体* |
+| \`**加粗**\` | **加粗** |
+| \`***又粗又斜***\` | ***又粗又斜*** |
+| \`==标黄==\` | ==标黄== |
+| \`~~划掉~~\` | ~~划掉~~ |
+| \`[[本名]]\` | [[本名]]（双链） |
+| \`[别名](本名)\` | [别名](本名) |
+
+## 格式
+
+- 无序列表：\`- 空格\`
+  - 缩进两个空格就是下一级
+1. 有序列表：\`1. 空格\`
+2. 自动接号
+- [ ] 打卡列表：\`- [ ] 空格\`
+- [x] 打完勾：\`- [x]\`
+
+\`---\` 单独一行 = 分隔线：
+
+---
+`,
+    suggest_tags: [],
+    suggest_partition: ''
   }
 ]
 
@@ -239,10 +296,23 @@ function ensureEditor() {
     editor = new Vditor(editorEl.value, {
       // v35：撑满剩余高度（父容器 .vditor-host 有确定高度）
       height: '100%',
+      // v36：**深色主题**。用户："原创区的编辑区域白色不和背景，变深色"。
+      //
+      // Vditor 的暗色不是另装一套 CSS，而是给根节点加 `.vditor--dark`，
+      // 靠覆盖 CSS 变量（--panel-background-color / --textarea-*）实现。
+      // 默认暗色是 GitHub 的 #24292e，和本站的 #161920 不搭，所以下面
+      // <style> 里再把变量对齐到 --bg-panel / --bg-input。
+      theme: 'dark',
       placeholder: '写下你的思考。解析结果、引用建议都可以一键插入。',
       mode: 'sv',
       cache: { enable: false },
       cdn: VEDITOR_CDN,
+      // 预览栏的内容主题也要 dark（否则右侧白底黑字，一半亮一半暗）。
+      // 注意：这个 css 是从 {cdn}/dist/css/content-theme/dark.css 加载的
+      // 静态文件，必须真的存在（`sync-vditor-assets.mjs` 已加进拷贝清单）。
+      preview: {
+        theme: { current: 'dark', path: `${VEDITOR_CDN}/dist/css/content-theme` }
+      },
       toolbar: ['emoji', 'bold', 'italic', 'strike', '|', 'list', 'ordered', 'check', '|', 'quote', 'link', 'undo', 'redo']
     })
     return waitEditorReady(editor)
@@ -491,5 +561,40 @@ onUnmounted(() => {
 }
 .vditor-host :deep(.vditor-content) {
   height: calc(100% - 35px);
+}
+
+/* ===== v36：把 Vditor 的暗色对齐到本站配色 =====
+   用户："原创区的编辑区域白色不和背景，变深色"。
+   `theme: 'dark'` 只加 `.vditor--dark` 类并覆盖了一批 CSS 变量，
+   默认值是 GitHub 暗色的 #24292e / #2f363d —— 和本站 #161920 差一截，
+   看着像"另一块颜色"。这里把变量重指到 --bg-panel / --bg-input。 */
+.vditor-host :deep(.vditor--dark) {
+  --panel-background-color: var(--bg-panel);
+  --toolbar-background-color: var(--bg-elevated);
+  --textarea-background-color: var(--bg-input);
+  --textarea-text-color: var(--text);
+  --border-color: var(--border);
+  --second-color: var(--border-light);
+  --toolbar-icon-color: var(--text-muted);
+  --toolbar-icon-hover-color: var(--text);
+  --toolbar-icon-active-color: var(--accent);
+}
+/* 源码面板（sv 模式左栏）底色 / 滚动条 */
+.vditor-host :deep(.vditor-sv) {
+  background: var(--bg-input);
+}
+.vditor-host :deep(.vditor-sv .vditor-reset) {
+  color: var(--text);
+}
+/* 预览栏（右栏）底色：dark.css 只改文字色，底板要自己压深 */
+.vditor-host :deep(.vditor-preview) {
+  background: var(--bg-panel);
+}
+.vditor-host :deep(.vditor-preview .vditor-reset) {
+  color: var(--text);
+}
+/* 工具栏分隔线在暗底上太黑，提亮一档 */
+.vditor-host :deep(.vditor-toolbar) {
+  border-bottom: 1px solid var(--border);
 }
 </style>

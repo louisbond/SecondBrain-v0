@@ -238,6 +238,48 @@ async def main(base: str) -> int:
             (b.page_errors[0][:150] if b.page_errors else ""),
         )
 
+        # v36：编辑器必须是**深色**（用户："编辑区域白色不和背景，变深色"）。
+        # 判据：三个关键区域的背景亮度都低于 90（0~255 的感知亮度）。
+        dark = await b.eval(
+            """(() => {
+              const lum = (c) => {
+                if (!c) return null;
+                const m = c.match(/\\d+/g);
+                if (!m) return null;
+                const [r, g, bl] = m.map(Number);
+                return Math.round(r * 0.299 + g * 0.587 + bl * 0.114);
+              };
+              const bg = (sel) => {
+                const e = document.querySelector(sel);
+                return e ? getComputedStyle(e).backgroundColor : '';
+              };
+              const sv = bg('.vditor-sv');
+              const pv = bg('.vditor-preview');
+              const tb = bg('.vditor-toolbar');
+              return {
+                root: (document.querySelector('.vditor') || {}).className || '',
+                sv, pv, tb,
+                svLum: lum(sv), pvLum: lum(pv), tbLum: lum(tb)
+              };
+            })()"""
+        )
+        check(
+            "原创区编辑器是深色主题",
+            "vditor--dark" in str(dark.get("root"))
+            and all(
+                isinstance(dark.get(k), int) and dark[k] < 90
+                for k in ("svLum", "pvLum", "tbLum")
+            ),
+            str(dark),
+        )
+
+        # v36：模板里要有「基本概念」（参考 ChaoNaoKu/基本概念.md 的常用部分）
+        has_cheatsheet = await b.eval(
+            """(() => [...document.querySelectorAll('.content .btn')]
+                 .some(e => (e.innerText||'').trim() === '基本概念'))()"""
+        )
+        check("原创区有「基本概念」语法速查模板", bool(has_cheatsheet), "")
+
         # 专项：首页去掉「今日回顾」后，搜索+图谱要填满视口（v35）
         print("\n── 专项：首页填满视口 ──")
         b.page_errors.clear()
@@ -337,9 +379,51 @@ async def main(base: str) -> int:
         check(
             "采集区有「解析并入库」合并按钮",
             bool(clicked),
-            "没找到合并后的按钮（应只有一步操作）",
+            # v36：原来这里把"失败说明"当固定 detail 传，成功时也印
+            # 「没找到合并后的按钮」—— 明明过了却看着像没过，会误导排查。
+            f"clicked={clicked}",
         )
         await asyncio.sleep(3.0)
+
+        # v36：采集与解析必须**在同一张卡里**（用户："采集和解析没有合并啊"）。
+        # v35 只是把解析挪到采集下方，仍是两张卡 —— 视觉上还是两个模块。
+        merged = await b.eval(
+            """(() => {
+              const scroll = document.querySelector('.wb-scroll');
+              if (!scroll) return {ok: false, why: '没有 .wb-scroll'};
+              const cards = [...scroll.querySelectorAll(':scope > .card')];
+              return {
+                ok: cards.length === 1 && !!document.querySelector('.mb-split'),
+                cards: cards.length,
+                split: !!document.querySelector('.mb-split'),
+                heads: [...document.querySelectorAll('.mb-title')].map(e => e.innerText.trim())
+              };
+            })()"""
+        )
+        check(
+            "采集与解析在同一张卡片里",
+            bool(merged.get("ok")),
+            str(merged),
+        )
+
+        # v36：转写区必须有行号，且从 1 起**逐个递增**。
+        # 注意：审计跑在隔离空库上，被选中的任务正文可能是空的
+        # （只有一行"（还没有原文）"），所以不能硬要求 ≥3 行 ——
+        # 要验的是"行号与行数一一对应、连续无跳号"。
+        nums = await b.eval(
+            """(() => {
+              const ns = [...document.querySelectorAll('.code-ln')].map(e => e.innerText.trim());
+              const lines = document.querySelectorAll('.code-line').length;
+              return {n: ns.length, lines, nums: ns.slice(0, 6), last: ns[ns.length - 1]};
+            })()"""
+        )
+        ok_nums = (
+            nums["n"] >= 1
+            and nums["n"] == nums["lines"]
+            and nums["nums"] == [str(i + 1) for i in range(len(nums["nums"]))]
+            and str(nums["last"]) == str(nums["n"])
+        )
+        check("转写区有连续行号", ok_nums, str(nums))
 
         reqs = await b.eval("window.__sbSubmit || []")
         if not reqs:
