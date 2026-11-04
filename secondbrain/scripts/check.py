@@ -26,13 +26,10 @@ FRONTEND = ROOT / "frontend"
 
 BASE_URL = "http://127.0.0.1:7688"
 
-# Windows 上 npm 是 npm.cmd（不是 npm.exe），直接 subprocess 调 "npm" 会
+# Windows 上 npm / npx 是 .cmd（不是 .exe），直接 subprocess 调 "npm" 会
 # 报 FileNotFoundError。按平台挑可执行名。
 NPM = "npm.cmd" if sys.platform == "win32" else "npm"
-
-# Windows 上 npm 是 npm.cmd（不是 npm.exe），直接 subprocess 调 "npm" 会
-# 报 FileNotFoundError。按平台挑可执行名。
-NPM = "npm.cmd" if sys.platform == "win32" else "npm"
+NPX = "npx.cmd" if sys.platform == "win32" else "npx"
 
 
 @dataclass
@@ -45,6 +42,11 @@ class Check:
 
 
 CHECKS: list[Check] = [
+    # ---- 代码质量（v39：工具链进仓库，别只在个人电脑上生效）----
+    Check("后端 lint", [sys.executable, "-m", "ruff", "check", "."], BACKEND, timeout=180),
+    Check("前端 lint", [NPX, "eslint", "src"], FRONTEND, timeout=300),
+    Check("格式检查", [NPX, "prettier", "--check", "src"], FRONTEND, timeout=300),
+    # ---- 功能 ----
     Check("后端单测", [sys.executable, "-m", "pytest", "tests/test_secondbrain.py", "-q"], BACKEND, timeout=300),
     Check("前后端契约", [sys.executable, "-m", "pytest", "tests/frontend_contract_test.py", "-q"], BACKEND, timeout=300),
     Check("前端构建", [NPM, "run", "build"], FRONTEND, timeout=600),
@@ -56,7 +58,10 @@ CHECKS: list[Check] = [
 ]
 
 # --quick 时跳过这些（要么慢，要么需要服务在跑）
-QUICK_ONLY = {"后端单测", "前后端契约", "前端构建"}
+QUICK_ONLY = {
+    "后端 lint", "前端 lint", "格式检查",
+    "后端单测", "前后端契约", "前端构建",
+}
 
 
 def server_alive() -> bool:
@@ -86,9 +91,14 @@ def run(check: Check) -> tuple[bool, str, float]:
         return False, f"超时（>{check.timeout}s）", time.time() - started
     except FileNotFoundError as exc:
         hint = ""
-        if "npm" in str(exc):
-            hint = "（npm 不在 PATH 里？装了 Node 吗？）"
+        if "npm" in str(exc) or "npx" in str(exc):
+            hint = "（npm/npx 不在 PATH 里？装了 Node 吗？）"
         return False, f"命令不存在：{exc}{hint}", time.time() - started
+    except Exception as exc:  # noqa: BLE001
+        # ruff 没装是最常见的情况：给一句能直接抄的命令
+        if "ruff" in check.name and "No module named" in str(exc):
+            return False, "没装 ruff（pip install ruff）", time.time() - started
+        return False, str(exc)[:200], time.time() - started
     cost = time.time() - started
     if proc.returncode == 0:
         return True, "通过", cost

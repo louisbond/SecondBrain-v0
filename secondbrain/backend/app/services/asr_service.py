@@ -135,7 +135,6 @@ class ASRService:
         断点续跑：已下载的文件不重下（按 hash 前缀找缓存）。
         """
         import hashlib
-        import time
 
         cache_dir = self.cfg.asr.cache_dir
         cache_dir.mkdir(parents=True, exist_ok=True)

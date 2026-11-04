@@ -89,7 +89,7 @@ class IsolatedServer:
         )
         return text + "\n"
 
-    def __enter__(self) -> "IsolatedServer":
+    def __enter__(self) -> IsolatedServer:
         self.home = Path(tempfile.mkdtemp(prefix="sb_test_home_"))
         vault = self.home / "vault"
         for sub in ("01_Inbox", "02_Processed", "03_Notes", "99_Archive", "_reports", "assets"):

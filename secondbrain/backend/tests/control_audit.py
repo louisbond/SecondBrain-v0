@@ -126,7 +126,7 @@ async def audit_page(b: Browser, base: str, path: str, label: str, selectors: li
             new = (b.console_errors + b.page_errors)[0]
             check(f"{label} {sel} 点击无报错", False, f"{clicked} 个控件 → {new[:160]}")
         else:
-            changed = after_dom != m["contentH"] or bool(toasts)
+            _changed = after_dom != m["contentH"] or bool(toasts)
             if toasts:
                 check(
                     f"{label} {sel} 点击有反馈",
@@ -490,7 +490,7 @@ if __name__ == "__main__":
         # 只读模式：对着真实库跑审计必须显式加 --allow-live，
         # 因为「确认入库」这类控件会真的写库、落 md。
         # 误点一次就会污染用户的真实知识库。
-        if not "--allow-live" in sys.argv:
+        if "--allow-live" not in sys.argv:
             print(
                 "拒绝执行：--base 指向的可能是真实库。\n"
                 "审计会点击控件，「确认入库」会真的写库落 md。\n"

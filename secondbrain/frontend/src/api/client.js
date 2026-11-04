@@ -201,8 +201,7 @@ export const itemsApi = {
   },
   get: (id) => api.get(`/api/items/${id}`),
   content: (id) => api.get(`/api/items/${id}/content`),
-  manualFill: (id, text, title) =>
-    api.post(`/api/items/${id}/manual-fill`, { text, title }),
+  manualFill: (id, text, title) => api.post(`/api/items/${id}/manual-fill`, { text, title }),
   retry: (id) => api.post(`/api/items/${id}/retry`),
   remove: (id) => api.del(`/api/items/${id}`)
 }
@@ -228,13 +227,13 @@ export const reviewApi = {
 }
 
 export const searchApi = {
-  query: (payload) => api.post('/api/search', payload),  vocabulary: () => api.get('/api/search/vocabulary'),
+  query: (payload) => api.post('/api/search', payload),
+  vocabulary: () => api.get('/api/search/vocabulary'),
   similar: (notePath, topK = 10) =>
     api.get(`/api/search/similar?note_path=${encodeURIComponent(notePath)}&top_k=${topK}`),
   backlinks: (notePath) =>
     api.get(`/api/search/backlinks?note_path=${encodeURIComponent(notePath)}`),
-  graph: (notePath) =>
-    api.get(`/api/search/graph?note_path=${encodeURIComponent(notePath)}`)
+  graph: (notePath) => api.get(`/api/search/graph?note_path=${encodeURIComponent(notePath)}`)
 }
 
 export const notesApi = {
@@ -250,8 +249,7 @@ export const notesApi = {
   create: (payload) => api.post('/api/notes', payload),
   update: (path, payload) => api.put(`/api/notes/${encodePath(path)}`, payload),
   remove: (path) => api.del(`/api/notes/${encodePath(path)}`),
-  importExternal: (content, title) =>
-    api.post('/api/notes/import', { content, title }),
+  importExternal: (content, title) => api.post('/api/notes/import', { content, title }),
   inspiration: (title, body, topK = 5) =>
     api.post('/api/notes/inspiration', { title, body, top_k: topK }),
   archive: (path) => api.post(`/api/notes/${encodePath(path)}/archive`),
@@ -274,8 +272,7 @@ export const tagsApi = {
 
 export const recapApi = {
   card: () => api.get('/api/recap/card'),
-  weekly: (weekOffset = 0) =>
-    api.post(`/api/recap/weekly?week_offset=${weekOffset}`),
+  weekly: (weekOffset = 0) => api.post(`/api/recap/weekly?week_offset=${weekOffset}`),
   daily: (start, end) => api.post('/api/recap/daily', { start, end }),
   reports: () => api.get('/api/recap/reports')
 }
@@ -285,8 +282,7 @@ export const settingsApi = {
   providers: () => api.get('/api/settings/providers'),
   switchProvider: (provider) => api.post('/api/settings/provider', { provider }),
   resetProvider: () => api.post('/api/settings/provider/reset'),
-  setAutoFallback: (enabled) =>
-    api.post('/api/settings/auto-fallback', { enabled }),
+  setAutoFallback: (enabled) => api.post('/api/settings/auto-fallback', { enabled }),
   setLan: (allowLan, token) => api.post('/api/settings/lan', { allow_lan: allowLan, token }),
   setVault: (path) => api.post('/api/settings/vault', { path }),
   reindex: () => api.post('/api/settings/reindex'),
@@ -348,8 +344,7 @@ export const noteTemplatesApi = {
 export const partitionsApi = {
   list: () => api.get('/api/partitions'),
   tree: () => api.get('/api/partitions/tree'),
-  create: (name, parentId = null) =>
-    api.post('/api/partitions', { name, parent_id: parentId }),
+  create: (name, parentId = null) => api.post('/api/partitions', { name, parent_id: parentId }),
   update: (id, payload) => api.put(`/api/partitions/${id}`, payload),
   remove: (id) => api.del(`/api/partitions/${id}`),
   subtree: (id) => api.get(`/api/partitions/${id}/subtree`),

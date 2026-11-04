@@ -177,7 +177,7 @@ class PartitionService:
             raise ValueError(f"分区「{new_path}」已存在")
 
         db = get_db()
-        subtree = self.subtree_ids(partition_id)
+        _subtree = self.subtree_ids(partition_id)
         old_prefix = str(current["path"])
 
         def _run(conn) -> None:

@@ -16,8 +16,8 @@ import sqlite3
 import time
 from typing import Any
 
-from app.core.db import get_db
 from app.core import fts as fts_mod
+from app.core.db import get_db
 from app.core.tokenizer import build_match_query, jieba_error, search_mode
 
 # B/C 层权重（C 层 > B 层）
@@ -81,7 +81,7 @@ class SearchService:
 
         # 标签 AND 筛选：每个标签一个 EXISTS 子句
         tag_clause = ""
-        for tag in tags or []:
+        for _tag in tags or []:
             tag_clause += (
                 " AND EXISTS (SELECT 1 FROM note_tags nt JOIN tags t ON t.id = nt.tag_id "
                 "WHERE nt.note_id = n.id AND t.name = ?)"
@@ -116,7 +116,7 @@ class SearchService:
             LIMIT ? OFFSET ?
         """
         params = [*fts_mod.BM25_WEIGHTS, match, *levels]
-        params.extend([t for t in (tags or [])])
+        params.extend(list(tags or []))
         params.extend(partition_params)
         params.extend([limit, offset])
 
@@ -139,7 +139,7 @@ class SearchService:
               {archived_clause} {tag_clause} {partition_clause}
         """
         total_params = [match, *levels]
-        total_params.extend([t for t in (tags or [])])
+        total_params.extend(list(tags or []))
         total_params.extend(partition_params)
         total = self.db.scalar(total_sql, total_params) or 0
 
@@ -267,7 +267,7 @@ class SearchService:
         )
         if row is None:
             return []
-        title = str(row["title"] or "")
+        _title = str(row["title"] or "")
         tags = [
             str(r["name"])
             for r in self.db.query(

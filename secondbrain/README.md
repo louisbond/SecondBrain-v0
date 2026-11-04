@@ -45,7 +45,7 @@ cd frontend && npm run dev     # → http://localhost:5173（已代理 /api）
 ### 开发与测试
 
 ```bash
-# 一键跑全套检查（单测 + 契约 + 构建 + E2E + 边界 + 渲染 + 走查 + 审计）
+# 一键跑全套检查（lint + 格式 + 单测 + 契约 + 构建 + E2E + 边界 + 渲染 + 走查 + 审计）
 python scripts/check.py
 
 # 只跑不需要服务的（快，秒级）
@@ -60,6 +60,9 @@ python scripts/check.py --list
 
 | 检查项 | 命令 | 说明 |
 |---|---|---|
+| 后端 lint | `python -m ruff check .` | 规则配置在 `backend/pyproject.toml` |
+| 前端 lint | `npm run lint` | ESLint（flat config，`eslint.config.js`） |
+| 格式检查 | `npm run format:check` | Prettier（`.prettierrc.json`） |
 | 后端单测 | `pytest tests/test_secondbrain.py` | 领域逻辑 + 服务 + 迁移 |
 | 前后端契约 | `pytest tests/frontend_contract_test.py` | 接口形状与前端调用一致 |
 | 前端构建 | `npm run build` | 也会自动同步 Vditor 运行时资源 |
@@ -68,6 +71,32 @@ python scripts/check.py --list
 | 渲染检查 | `python tests/frontend_render_test.py` | 每页关键文案 + 无运行时错误 |
 | 用户走查 | `python scripts/user_journey_test.py` | 真实点一遍主要页面 |
 | 控件审计 | `python tests/control_audit.py` | 可点的控件逐个点，抓 JS 报错 |
+
+### 代码风格工具
+
+```bash
+# 后端
+pip install ruff
+cd backend && python -m ruff check .        # 检查
+cd backend && python -m ruff check . --fix  # 自动修（安全的那些）
+
+# 前端
+npm run lint        # 检查
+npm run lint:fix    # 自动修
+npm run format      # 格式化
+npm run format:check
+```
+
+- Ruff 规则写在 `backend/pyproject.toml`（选了 pycodestyle / pyflakes /
+  bugbear / pyupgrade / isort 等；**行宽不管** —— 交给 formatter，
+  否则存量 118 处行宽告警会把真问题淹掉）。
+- ESLint 用 flat config（`frontend/eslint.config.js`）。**每条告警都值得看**，
+  所以风格类规则（属性连字符、多词组件名…）一律关掉，只留会抓 bug 的：
+  未定义变量、未用变量、`==`/`!=`、`no-eval`、空 catch。
+- Prettier 只管排版，不改语义。
+
+> Prettier 3 **内置** Vue 支持，不需要 `prettier-plugin-vue`（那个插件是给
+> Prettier 2 用的，装上会报 `Cannot read properties of undefined (reading 'html')`）。
 
 **约定**（成熟软件的基本要求）：
 
@@ -81,6 +110,7 @@ python scripts/check.py --list
 - **前端异常不许静默**：`main.js` 里有全局 errorHandler / unhandledrejection
   兜底，任何未捕获错误都会弹提示。
 - **用户数据绝不入库**：`.gitignore` 挡掉 `data/`、`logs/`、真实 config。
+- **lint 必须全绿**：`scripts/check.py` 里有 lint 项，CI 直接用它的退出码。
 
 ### 打包分发（P10）
 

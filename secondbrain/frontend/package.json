@@ -8,16 +8,25 @@
     "build": "vite build",
     "preview": "vite preview",
     "sync:vditor": "node scripts/sync-vditor-assets.mjs",
-    "prebuild": "npm run sync:vditor"
+    "prebuild": "npm run sync:vditor",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write src",
+    "format:check": "prettier --check src"
   },
   "dependencies": {
-    "vue": "^3.4.21",
-    "vue-router": "^4.3.0",
     "echarts": "^5.5.0",
-    "vditor": "^3.8.10"
+    "vditor": "^3.8.10",
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@vitejs/plugin-vue": "^5.0.4",
+    "eslint": "^10.14.0",
+    "eslint-plugin-vue": "^10.12.0",
+    "globals": "^17.14.0",
+    "prettier": "^3.9.10",
     "vite": "^5.2.0"
   }
 }

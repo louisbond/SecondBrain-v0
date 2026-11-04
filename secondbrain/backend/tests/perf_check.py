@@ -236,7 +236,7 @@ def main() -> int:
             f"P95={search_stats['p95']}ms",
         ),
         (
-            f"反链查询 P95 < 50ms",
+            "反链查询 P95 < 50ms",
             backlink_stats["p95"] < 50,
             f"P95={backlink_stats['p95']}ms",
         ),

@@ -21,8 +21,12 @@ const props = defineProps({
 const toast = inject('toast')
 const refreshSignal = inject('refreshSignal')
 // 分组 Tab（单独使用时生效；被嵌入时由外部 group 决定）
-const group = ref('ai')
-const activeGroup = computed(() => props.group || group.value)
+//
+// 注意：本地状态**不能**也叫 group —— props 里已经有 group，
+// 同名会被 eslint 的 vue/no-dupe-keys 判为重复键
+// （组件内的 props 与 setup 返回值同名 = 模板里取值来源不明）。
+const localGroup = ref('ai')
+const activeGroup = computed(() => props.group || localGroup.value)
 
 const settings = ref(null)
 const providers = ref(null)
@@ -53,7 +57,7 @@ const ENDPOINT_PRESETS = [
   }
 ]
 
-const supportLevels = {
+const _supportLevels = {
   full: { label: '完整可用', cls: 'ok' },
   partial: { label: '部分可用', cls: 'warn' },
   unstable: { label: '不稳定', cls: 'danger' },
@@ -64,7 +68,7 @@ async function loadSettingsOnly() {
   try {
     settings.value = await settingsApi.get()
     newVaultPath.value = settings.value.vault.path
-  } catch (e) {
+  } catch {
     /* 静默：全局刷新失败不该弹窗 */
   }
 }
@@ -78,19 +82,19 @@ async function load() {
   }
   try {
     providers.value = await settingsApi.providers()
-  } catch (e) {
+  } catch {
     /* 健康检查失败不阻塞 */
   }
   try {
     autostart.value = await settingsApi.autostart()
-  } catch (e) {
+  } catch {
     autostart.value = null
   }
   try {
     arkState.value = await settingsApi.getAiKey()
     arkBaseUrl.value = arkState.value.base_url || 'https://ark.cn-beijing.volces.com/api/v3'
     arkModel.value = arkState.value.model || ''
-  } catch (e) {
+  } catch {
     arkState.value = null
   }
 }
@@ -116,27 +120,23 @@ async function saveArkKey(activate) {
     arkState.value = r
     arkKey.value = ''
     toast(
-      activate
-        ? `已保存并切换到 openai_compat（密钥 ${r.masked}）`
-        : `已保存（密钥 ${r.masked}）`,
+      activate ? `已保存并切换到 openai_compat（密钥 ${r.masked}）` : `已保存（密钥 ${r.masked}）`,
       'success'
     )
     await load()
   } catch (e) {
-    toast((e.detail || e.message || '保存失败'), 'error')
+    toast(e.detail || e.message || '保存失败', 'error')
   }
 }
 
 async function toggleAutostart() {
   const installed = autostart.value?.autostart?.installed
   try {
-    const r = installed
-      ? await settingsApi.disableAutostart()
-      : await settingsApi.enableAutostart()
+    const r = installed ? await settingsApi.disableAutostart() : await settingsApi.enableAutostart()
     toast(r.message || (installed ? '已注销开机自启' : '已注册开机自启'), 'success')
     await load()
   } catch (e) {
-    toast((e.detail || e.message || '操作失败'), 'error')
+    toast(e.detail || e.message || '操作失败', 'error')
   }
 }
 
@@ -145,7 +145,7 @@ async function setNeverSleep() {
     const r = await settingsApi.neverSleep()
     toast(r.message || '已设置', 'success')
   } catch (e) {
-    toast((e.detail || e.message || '设置失败（可能需要管理员权限）'), 'warn')
+    toast(e.detail || e.message || '设置失败（可能需要管理员权限）', 'warn')
   }
 }
 
@@ -158,7 +158,7 @@ async function clearArkKey() {
     toast('已清除密钥', 'success')
     await load()
   } catch (e) {
-    toast((e.detail || e.message || '清除失败'), 'error')
+    toast(e.detail || e.message || '清除失败', 'error')
   }
 }
 
@@ -252,8 +252,6 @@ async function rebuildEmbeddings() {
   }
 }
 
-
-
 async function shutdown() {
   if (!confirm('确认关闭 SecondBrain 服务？')) return
   try {
@@ -267,7 +265,9 @@ async function shutdown() {
 // 全局刷新信号（窗口聚焦 / 切页）→ 重新拉数据，避免状态不同步
 // 全局刷新信号 → 只重载设置内容，**不重载 providers**
 // （providers 会打 provider 健康检查，网络请求重，重载就是刷屏）
-watch(refreshSignal, () => { loadSettingsOnly() })
+watch(refreshSignal, () => {
+  loadSettingsOnly()
+})
 
 onMounted(load)
 </script>
@@ -282,270 +282,270 @@ onMounted(load)
     <template v-else>
       <!-- 分组 Tab：与管理区同款（同页切换，不做长滚动）。
            被管理区嵌入时由外层 tab 控制分组，这里不重复画一排。 -->
-      <div v-if="!embedded" class="tabs" style="margin-bottom:14px">
-        <button class="tab" :class="{ active: group === 'ai' }" @click="group = 'ai'">
+      <div v-if="!embedded" class="tabs" style="margin-bottom: 14px">
+        <button class="tab" :class="{ active: localGroup === 'ai' }" @click="localGroup = 'ai'">
           AI
         </button>
-        <button class="tab" :class="{ active: group === 'storage' }" @click="group = 'storage'">
+        <button
+          class="tab"
+          :class="{ active: localGroup === 'storage' }"
+          @click="localGroup = 'storage'"
+        >
           存储
         </button>
-        <button class="tab" :class="{ active: group === 'system' }" @click="group = 'system'">
+        <button
+          class="tab"
+          :class="{ active: localGroup === 'system' }"
+          @click="localGroup = 'system'"
+        >
           系统
         </button>
       </div>
 
       <!-- ===== AI 组 ===== -->
       <template v-if="activeGroup === 'ai'">
-      <!-- Provider -->
-      <div class="card">
-        <div class="card-title"><span>🤖</span> AI Provider</div>
-        <div class="row wrap" style="margin-bottom:10px">
-          <span class="muted">当前：</span>
-          <span class="badge accent">{{ settings.ai.provider }}</span>
-          <span v-if="providers?.fallback_active" class="badge warn">
-            已自动降级到 {{ providers.current }}
-          </span>
-          <div class="spacer" style="flex:1"></div>
-          <button class="btn ghost sm" @click="resetProvider">恢复主链</button>
-        </div>
+        <!-- Provider -->
+        <div class="card">
+          <div class="card-title"><span>🤖</span> AI Provider</div>
+          <div class="row wrap" style="margin-bottom: 10px">
+            <span class="muted">当前：</span>
+            <span class="badge accent">{{ settings.ai.provider }}</span>
+            <span v-if="providers?.fallback_active" class="badge warn">
+              已自动降级到 {{ providers.current }}
+            </span>
+            <div class="spacer" style="flex: 1"></div>
+            <button class="btn ghost sm" @click="resetProvider">恢复主链</button>
+          </div>
 
-        <!-- Provider 列表：内部滚动。
+          <!-- Provider 列表：内部滚动。
              链的数量不固定（ollama / openai_compat …），不设上限的话
              页面高度会随链数增长，破坏「每页内容高度 ≤ 视口」。
              v34：workbuddy 那条链已移除。 -->
-        <div class="provider-list">
-          <div
-            v-for="p in providers?.providers || []"
-            :key="p.name"
-            class="list-item"
-            style="cursor:pointer;align-items:flex-start"
-            @click="switchProvider(p.name)"
-          >
-            <div class="grow">
-              <div class="title">
-                {{ p.name }}
-                <span v-if="p.active" class="badge accent">当前</span>
-              </div>
-              <div class="sub">{{ p.model }}</div>
-              <div class="sub" :style="{ color: p.ok ? 'var(--ok)' : 'var(--danger)' }">
-                {{ p.ok ? '✓ 可用' : '✗ 不可用' }} · {{ p.latency_ms }}ms
-              </div>
-              <div v-if="p.detail" class="sub wrap" style="font-size:11px">
-                {{ p.detail }}
+          <div class="provider-list">
+            <div
+              v-for="p in providers?.providers || []"
+              :key="p.name"
+              class="list-item"
+              style="cursor: pointer; align-items: flex-start"
+              @click="switchProvider(p.name)"
+            >
+              <div class="grow">
+                <div class="title">
+                  {{ p.name }}
+                  <span v-if="p.active" class="badge accent">当前</span>
+                </div>
+                <div class="sub">{{ p.model }}</div>
+                <div class="sub" :style="{ color: p.ok ? 'var(--ok)' : 'var(--danger)' }">
+                  {{ p.ok ? '✓ 可用' : '✗ 不可用' }} · {{ p.latency_ms }}ms
+                </div>
+                <div v-if="p.detail" class="sub wrap" style="font-size: 11px">
+                  {{ p.detail }}
+                </div>
               </div>
             </div>
           </div>
+
+          <div class="row" style="margin-top: 12px">
+            <label class="row" style="margin: 0; cursor: pointer">
+              <input
+                type="checkbox"
+                :checked="settings.ai.auto_fallback"
+                style="width: auto"
+                @change="settingsApi.setAutoFallback($event.target.checked).then(load)"
+              />
+              自动降级（连续失败 {{ settings.ai.fallback_threshold }} 次或 429 时切 Ollama）
+            </label>
+          </div>
+
+          <div class="alert info" style="margin-top: 12px">
+            embedding：{{ settings.ai.embedding_model }}
+            <span :class="settings.ai.embedding_real ? 'badge ok' : 'badge warn'">
+              {{ settings.ai.embedding_real ? '真实模型' : '降级哈希后端' }}
+            </span>
+          </div>
         </div>
 
-        <div class="row" style="margin-top:12px">
-          <label class="row" style="margin:0;cursor:pointer">
+        <!-- OpenAI 兼容端点（火山方舟） -->
+        <div class="card">
+          <div class="card-title"><span>🔑</span> API 密钥（OpenAI 兼容端点）</div>
+          <div class="dim" style="font-size: 12px; margin-bottom: 10px">
+            适用于火山方舟等 OpenAI 兼容服务。密钥只写入
+            <span class="mono">config/secrets.json</span>，不落 config.toml。
+            <span v-if="arkState?.configured" class="badge ok" style="margin-left: 6px">
+              已配置 {{ arkState.masked }}
+            </span>
+            <span v-else class="badge warn" style="margin-left: 6px">未配置</span>
+          </div>
+          <!-- 预设端点：一键填 base_url + 模型名 -->
+          <div class="row wrap" style="margin-bottom: 8px">
+            <span class="dim" style="font-size: 11.5px">常用预设：</span>
+            <button
+              v-for="p in ENDPOINT_PRESETS"
+              :key="p.name"
+              class="btn ghost sm"
+              @click="applyPreset(p)"
+            >
+              {{ p.name }}
+            </button>
+          </div>
+          <div class="row wrap">
             <input
-              type="checkbox"
-              :checked="settings.ai.auto_fallback"
-              style="width:auto"
-              @change="settingsApi.setAutoFallback($event.target.checked).then(load)"
+              v-model="arkBaseUrl"
+              type="text"
+              placeholder="base_url，如 https://ark.cn-beijing.volces.com/api/v3"
+              style="flex: 1; min-width: 260px"
             />
-            自动降级（连续失败 {{ settings.ai.fallback_threshold }} 次或 429 时切 Ollama）
-          </label>
+          </div>
+          <div class="row wrap" style="margin-top: 8px">
+            <input
+              v-model="arkModel"
+              type="text"
+              placeholder="模型 ID，如 doubao-seed-2-1-pro-260915"
+              style="flex: 1; min-width: 220px"
+            />
+            <input
+              v-model="arkKey"
+              type="password"
+              placeholder="API Key（留空则保留已保存的）"
+              style="flex: 1; min-width: 220px"
+            />
+          </div>
+          <div class="row" style="margin-top: 10px">
+            <button class="btn ghost" @click="saveArkKey(false)">仅保存</button>
+            <button class="btn" @click="saveArkKey(true)">保存并切换到该链</button>
+            <div class="spacer" style="flex: 1"></div>
+            <button v-if="arkState?.configured" class="btn ghost sm" @click="clearArkKey">
+              清除密钥
+            </button>
+          </div>
         </div>
-
-        <div class="alert info" style="margin-top:12px">
-          embedding：{{ settings.ai.embedding_model }}
-          <span :class="settings.ai.embedding_real ? 'badge ok' : 'badge warn'">
-            {{ settings.ai.embedding_real ? '真实模型' : '降级哈希后端' }}
-          </span>
-        </div>
-      </div>
-
-      <!-- OpenAI 兼容端点（火山方舟） -->
-      <div class="card">
-        <div class="card-title"><span>🔑</span> API 密钥（OpenAI 兼容端点）</div>
-        <div class="dim" style="font-size:12px;margin-bottom:10px">
-          适用于火山方舟等 OpenAI 兼容服务。密钥只写入
-          <span class="mono">config/secrets.json</span>，不落 config.toml。
-          <span v-if="arkState?.configured" class="badge ok" style="margin-left:6px">
-            已配置 {{ arkState.masked }}
-          </span>
-          <span v-else class="badge warn" style="margin-left:6px">未配置</span>
-        </div>
-        <!-- 预设端点：一键填 base_url + 模型名 -->
-        <div class="row wrap" style="margin-bottom:8px">
-          <span class="dim" style="font-size:11.5px">常用预设：</span>
-          <button
-            v-for="p in ENDPOINT_PRESETS"
-            :key="p.name"
-            class="btn ghost sm"
-            @click="applyPreset(p)"
-          >
-            {{ p.name }}
-          </button>
-        </div>
-        <div class="row wrap">
-          <input
-            v-model="arkBaseUrl"
-            type="text"
-            placeholder="base_url，如 https://ark.cn-beijing.volces.com/api/v3"
-            style="flex:1;min-width:260px"
-          />
-        </div>
-        <div class="row wrap" style="margin-top:8px">
-          <input
-            v-model="arkModel"
-            type="text"
-            placeholder="模型 ID，如 doubao-seed-2-1-pro-260915"
-            style="flex:1;min-width:220px"
-          />
-          <input
-            v-model="arkKey"
-            type="password"
-            placeholder="API Key（留空则保留已保存的）"
-            style="flex:1;min-width:220px"
-          />
-        </div>
-        <div class="row" style="margin-top:10px">
-          <button class="btn ghost" @click="saveArkKey(false)">仅保存</button>
-          <button class="btn" @click="saveArkKey(true)">保存并切换到该链</button>
-          <div class="spacer" style="flex:1"></div>
-          <button v-if="arkState?.configured" class="btn ghost sm" @click="clearArkKey">
-            清除密钥
-          </button>
-        </div>
-      </div>
-
       </template>
 
       <!-- ===== 存储组 ===== -->
       <template v-if="activeGroup === 'storage'">
-      <!-- Vault -->
-      <div class="card">
-        <div class="card-title"><span>📁</span> Vault 目录</div>
-        <div class="mono dim" style="margin-bottom:10px">
-          {{ settings.vault.path }}
-        </div>
-        <div class="row">
-          <input v-model="newVaultPath" type="text" placeholder="vault 根目录绝对路径" />
-          <button class="btn" @click="changeVault">切换</button>
-        </div>
-        <div class="grid-4" style="margin-top:12px">
-          <div class="stat">
-            <div class="value" style="font-size:13px">01_Inbox</div>
-            <div class="label">A 层原文</div>
+        <!-- Vault -->
+        <div class="card">
+          <div class="card-title"><span>📁</span> Vault 目录</div>
+          <div class="mono dim" style="margin-bottom: 10px">
+            {{ settings.vault.path }}
           </div>
-          <div class="stat">
-            <div class="value" style="font-size:13px">02_Processed</div>
-            <div class="label">B 层提炼</div>
+          <div class="row">
+            <input v-model="newVaultPath" type="text" placeholder="vault 根目录绝对路径" />
+            <button class="btn" @click="changeVault">切换</button>
           </div>
-          <div class="stat">
-            <div class="value" style="font-size:13px">03_Notes</div>
-            <div class="label">C 层创作</div>
+          <div class="grid-4" style="margin-top: 12px">
+            <div class="stat">
+              <div class="value" style="font-size: 13px">01_Inbox</div>
+              <div class="label">A 层原文</div>
+            </div>
+            <div class="stat">
+              <div class="value" style="font-size: 13px">02_Processed</div>
+              <div class="label">B 层提炼</div>
+            </div>
+            <div class="stat">
+              <div class="value" style="font-size: 13px">03_Notes</div>
+              <div class="label">C 层创作</div>
+            </div>
+            <div class="stat">
+              <div class="value" style="font-size: 13px">_reports</div>
+              <div class="label">报表</div>
+            </div>
           </div>
-          <div class="stat">
-            <div class="value" style="font-size:13px">_reports</div>
-            <div class="label">报表</div>
+        </div>
+
+        <!-- 索引 -->
+        <div class="card">
+          <div class="card-title"><span>🗂</span> 索引维护</div>
+          <div class="row wrap">
+            <button class="btn" :disabled="busy" @click="scan">扫描存量 vault</button>
+            <button class="btn" :disabled="busy" @click="reindex">重建索引</button>
+            <button class="btn" :disabled="busy" @click="rebuildEmbeddings">重建向量索引</button>
+          </div>
+          <div class="dim" style="font-size: 12px; margin-top: 8px">
+            md 文件是唯一真相源，索引随时可以重建。目标：5000 条重建 &lt; 60s。
           </div>
         </div>
-      </div>
 
-
-
-      <!-- 索引 -->
-      <div class="card">
-        <div class="card-title"><span>🗂</span> 索引维护</div>
-        <div class="row wrap">
-          <button class="btn" :disabled="busy" @click="scan">扫描存量 vault</button>
-          <button class="btn" :disabled="busy" @click="reindex">重建索引</button>
-          <button class="btn" :disabled="busy" @click="rebuildEmbeddings">重建向量索引</button>
+        <!-- ASR -->
+        <div class="card">
+          <div class="card-title"><span>🎙</span> 语音转写</div>
+          <div class="row wrap">
+            <span class="badge">{{ settings.asr.engine }}</span>
+            <span class="badge">{{ settings.asr.model_size }}</span>
+            <span class="badge">{{ settings.asr.compute }}</span>
+            <span class="badge" :class="settings.asr.available ? 'ok' : 'warn'">
+              {{ settings.asr.available ? '可用' : '未安装' }}
+            </span>
+            <span class="badge" :class="settings.asr.ytdlp_exists ? 'ok' : 'warn'">
+              yt-dlp {{ settings.asr.ytdlp_exists ? '就绪' : '缺失' }}
+            </span>
+          </div>
+          <div class="dim mono" style="margin-top: 8px">{{ settings.asr.cache_dir }}</div>
         </div>
-        <div class="dim" style="font-size:12px;margin-top:8px">
-          md 文件是唯一真相源，索引随时可以重建。目标：5000 条重建 &lt; 60s。
-        </div>
-      </div>
-
-      <!-- ASR -->
-      <div class="card">
-        <div class="card-title"><span>🎙</span> 语音转写</div>
-        <div class="row wrap">
-          <span class="badge">{{ settings.asr.engine }}</span>
-          <span class="badge">{{ settings.asr.model_size }}</span>
-          <span class="badge">{{ settings.asr.compute }}</span>
-          <span class="badge" :class="settings.asr.available ? 'ok' : 'warn'">
-            {{ settings.asr.available ? '可用' : '未安装' }}
-          </span>
-          <span class="badge" :class="settings.asr.ytdlp_exists ? 'ok' : 'warn'">
-            yt-dlp {{ settings.asr.ytdlp_exists ? '就绪' : '缺失' }}
-          </span>
-        </div>
-        <div class="dim mono" style="margin-top:8px">{{ settings.asr.cache_dir }}</div>
-      </div>
-
       </template>
 
       <!-- ===== 系统组 ===== -->
       <template v-if="activeGroup === 'system'">
-      <!-- 网络 -->
-      <div class="card">
-        <div class="card-title"><span>🌐</span> 网络</div>
-        <div class="row">
-          <label class="row" style="margin:0;cursor:pointer">
-            <input
-              type="checkbox"
-              :checked="settings.web.allow_lan"
-              style="width:auto"
-              @change="toggleLan"
-            />
-            允许局域网访问（默认关闭；开启时强制 token 校验）
-          </label>
-          <div class="spacer" style="flex:1"></div>
-          <span class="badge">{{ settings.web.host }}:{{ settings.web.port }}</span>
-        </div>
-        <div class="alert warn" style="margin-top:12px">
-          笔记本休眠或关机 = 服务下线。批量任务运行时请接通电源并把电源策略设为「永不睡眠」。
-        </div>
-      </div>
-
-      <!-- 开机自启 & 电源 -->
-      <div class="card">
-        <div class="card-title"><span>⏻</span> 开机自启与电源</div>
-        <div class="row">
-          <span class="muted">开机自启：</span>
-          <span
-            class="badge"
-            :class="autostart?.autostart?.installed ? 'ok' : ''"
-          >
-            {{ autostart?.autostart?.installed ? '已注册' : '未注册' }}
-          </span>
-          <div class="spacer" style="flex:1"></div>
-          <button class="btn" @click="toggleAutostart">
-            {{ autostart?.autostart?.installed ? '注销开机自启' : '注册开机自启' }}
-          </button>
-        </div>
-        <div class="dim" style="font-size:12px;margin-top:8px">
-          使用 Windows 任务计划程序（登录时启动）。需要管理员权限。
+        <!-- 网络 -->
+        <div class="card">
+          <div class="card-title"><span>🌐</span> 网络</div>
+          <div class="row">
+            <label class="row" style="margin: 0; cursor: pointer">
+              <input
+                type="checkbox"
+                :checked="settings.web.allow_lan"
+                style="width: auto"
+                @change="toggleLan"
+              />
+              允许局域网访问（默认关闭；开启时强制 token 校验）
+            </label>
+            <div class="spacer" style="flex: 1"></div>
+            <span class="badge">{{ settings.web.host }}:{{ settings.web.port }}</span>
+          </div>
+          <div class="alert warn" style="margin-top: 12px">
+            笔记本休眠或关机 = 服务下线。批量任务运行时请接通电源并把电源策略设为「永不睡眠」。
+          </div>
         </div>
 
-        <div class="alert warn" style="margin-top:14px">
-          {{ autostart?.power?.message || '笔记本休眠或关机 = 服务下线，ASR 队列会暂停（唤醒后自动续跑）。' }}
-        </div>
-        <div class="row wrap" style="margin-top:8px">
-          <button class="btn sm" @click="setNeverSleep">
-            设置为接通电源时不睡眠
-          </button>
-          <span class="dim" style="font-size:11.5px">
-            {{ (autostart?.power?.howto || []).join('；') }}
-          </span>
-        </div>
-      </div>
+        <!-- 开机自启 & 电源 -->
+        <div class="card">
+          <div class="card-title"><span>⏻</span> 开机自启与电源</div>
+          <div class="row">
+            <span class="muted">开机自启：</span>
+            <span class="badge" :class="autostart?.autostart?.installed ? 'ok' : ''">
+              {{ autostart?.autostart?.installed ? '已注册' : '未注册' }}
+            </span>
+            <div class="spacer" style="flex: 1"></div>
+            <button class="btn" @click="toggleAutostart">
+              {{ autostart?.autostart?.installed ? '注销开机自启' : '注册开机自启' }}
+            </button>
+          </div>
+          <div class="dim" style="font-size: 12px; margin-top: 8px">
+            使用 Windows 任务计划程序（登录时启动）。需要管理员权限。
+          </div>
 
-      <!-- 危险操作 -->
-      <div class="card">
-        <div class="card-title"><span>⏹</span> 服务</div>
-        <div class="row">
-          <button class="btn danger" @click="shutdown">关闭服务</button>
-          <span class="dim mono">
-            db: {{ settings.paths.db_path }}
-          </span>
+          <div class="alert warn" style="margin-top: 14px">
+            {{
+              autostart?.power?.message ||
+              '笔记本休眠或关机 = 服务下线，ASR 队列会暂停（唤醒后自动续跑）。'
+            }}
+          </div>
+          <div class="row wrap" style="margin-top: 8px">
+            <button class="btn sm" @click="setNeverSleep">设置为接通电源时不睡眠</button>
+            <span class="dim" style="font-size: 11.5px">
+              {{ (autostart?.power?.howto || []).join('；') }}
+            </span>
+          </div>
         </div>
-      </div>
+
+        <!-- 危险操作 -->
+        <div class="card">
+          <div class="card-title"><span>⏹</span> 服务</div>
+          <div class="row">
+            <button class="btn danger" @click="shutdown">关闭服务</button>
+            <span class="dim mono"> db: {{ settings.paths.db_path }} </span>
+          </div>
+        </div>
       </template>
     </template>
   </div>

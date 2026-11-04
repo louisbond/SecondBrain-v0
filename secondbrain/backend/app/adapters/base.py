@@ -84,7 +84,7 @@ def all_adapters() -> list[dict[str, Any]]:
     """列出全部适配器及其能力（前端设置页展示）。"""
     out: list[dict[str, Any]] = []
     for cls in _REGISTRY.values():
-        inst = cls.__new__(cls)  # 仅读类属性，避免构造副作用
+        cls.__new__(cls)  # 仅读类属性，避免构造副作用（丢弃返回值）
         out.append(
             {
                 "name": cls.name,

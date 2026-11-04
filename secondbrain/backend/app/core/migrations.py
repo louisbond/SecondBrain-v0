@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Callable
+from collections.abc import Callable
 
 # 版本 → 迁移函数
 MIGRATIONS: list[tuple[str, Callable[[sqlite3.Connection], None]]] = []

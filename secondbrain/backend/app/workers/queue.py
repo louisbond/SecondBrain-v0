@@ -17,8 +17,9 @@ import sqlite3
 import threading
 import time
 import traceback
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable
+from typing import Any
 
 from app.core.db import get_db
 from app.core.vault import now_iso

@@ -57,7 +57,7 @@ const platformMeta = {
   web: { label: '网页', color: 'var(--web)' },
   quick_note: { label: '速记', color: 'var(--ok)' }
 }
-const platformOf = (p) => platformMeta[p] || { label: p, color: 'var(--web)' }
+const _platformOf = (p) => platformMeta[p] || { label: p, color: 'var(--web)' }
 
 const summaryTypeLabel = computed(() => {
   const t = current.value?.ai_summary_type
@@ -107,9 +107,7 @@ const queueGroups = computed(() => [
   { key: 'pending', label: '待加工', icon: '✎', cls: 'accent', items: queue.value },
   {
     key: 'manual',
-    label: manualQueue.value.some((i) => i.status !== 'raw_ready')
-      ? '待手核 · 含异常'
-      : '待手核',
+    label: manualQueue.value.some((i) => i.status !== 'raw_ready') ? '待手核 · 含异常' : '待手核',
     icon: '✋',
     cls: 'warn',
     items: manualQueue.value
@@ -122,10 +120,7 @@ function pickQueue(item) {
 }
 
 const otherTags = computed(() => {
-  const used = new Set([
-    ...(current.value?.suggested_tags || []),
-    ...form.value.tags
-  ])
+  const used = new Set([...(current.value?.suggested_tags || []), ...form.value.tags])
   return (vocab.value.tags || [])
     .map((t) => (typeof t === 'string' ? t : t.name))
     .filter((name) => !used.has(name))
@@ -163,7 +158,7 @@ async function loadVocab() {
       partitions: p.partitions || []
     }
     partitionTree.value = p.tree || []
-  } catch (e) {
+  } catch {
     /* 忽略 */
   }
 }
@@ -172,14 +167,14 @@ async function loadTemplates() {
   try {
     const data = await workbenchApi.templates()
     templates.value = data.templates || []
-  } catch (e) {
+  } catch {
     /* 忽略 */
   }
   try {
     const data = await workbenchApi.charsPresets()
     charPresets.value = data.presets || charPresets.value
     minChars.value = data.default || 800
-  } catch (e) {
+  } catch {
     /* 忽略 */
   }
 }
@@ -342,7 +337,6 @@ function partCount(node) {
   return n
 }
 
-
 /** 把解析结果送到原创区（跨页草稿，见 utils/draft.js）。 */
 async function confirm() {
   if (!current.value) return
@@ -369,7 +363,6 @@ async function confirm() {
     saving.value = false
   }
 }
-
 
 /** 重新让 AI 分析当前条目（摘要/分区/标签不满意时用）。 */
 async function reanalyze() {
@@ -449,8 +442,9 @@ onMounted(async () => {
         <div v-if="!current" class="card empty">
           <div class="icon">▤</div>
           <div>左边选一条素材开始<strong>核准</strong></div>
-          <div class="dim" style="margin-top:6px;font-size:12px;line-height:1.7">
-            核准：确认<strong>分区</strong>与标签 → 选模板做<strong>模板化解析</strong>（字数档位可调）→
+          <div class="dim" style="margin-top: 6px; font-size: 12px; line-height: 1.7">
+            核准：确认<strong>分区</strong>与标签 →
+            选模板做<strong>模板化解析</strong>（字数档位可调）→
             生成结果可直接当创作底稿（字数为可调档位）
           </div>
         </div>
@@ -471,25 +465,31 @@ onMounted(async () => {
               <span class="badge" :class="currentStageHint.cls">
                 {{ currentStageHint.text }}
               </span>
-              <div class="spacer" style="flex:1"></div>
+              <div class="spacer" style="flex: 1"></div>
               <button
                 class="btn ghost sm"
                 :disabled="reanalyzing"
-                :title="isRawReady ? '跑一次 AI 提取要点（生成分区/标签建议）' : '摘要或分区标签不满意时，重新让 AI 分析一次'"
+                :title="
+                  isRawReady
+                    ? '跑一次 AI 提取要点（生成分区/标签建议）'
+                    : '摘要或分区标签不满意时，重新让 AI 分析一次'
+                "
                 @click="reanalyze"
               >
                 {{
                   reanalyzing
-                    ? (isRawReady ? '分析中…' : '重新分析中…')
-                    : (isRawReady ? 'AI 提取要点' : '重新分析')
+                    ? isRawReady
+                      ? '分析中…'
+                      : '重新分析中…'
+                    : isRawReady
+                      ? 'AI 提取要点'
+                      : '重新分析'
                 }}
               </button>
               <button class="btn ghost sm" @click="skip">跳过本条</button>
             </div>
 
-            <div class="step-hint">
-              ① 解析 → ② 加手稿 → ③ 确认分区与标签 → 入库
-            </div>
+            <div class="step-hint">① 解析 → ② 加手稿 → ③ 确认分区与标签 → 入库</div>
 
             <div v-if="aiModelLabel" class="source-hint">
               AI 来源：{{ aiModelLabel }}
@@ -500,14 +500,14 @@ onMounted(async () => {
             <input
               v-model="form.title"
               type="text"
-              style="margin:8px 0;font-size:15px;font-weight:600"
+              style="margin: 8px 0; font-size: 15px; font-weight: 600"
               placeholder="标题（默认取 AI 建议）"
             />
 
-            <div v-if="form.ai_summary" class="ai-summary" style="margin-bottom:10px">
+            <div v-if="form.ai_summary" class="ai-summary" style="margin-bottom: 10px">
               {{ form.ai_summary }}
             </div>
-            <div v-else class="dim" style="margin-bottom:10px">
+            <div v-else class="dim" style="margin-bottom: 10px">
               （本次没有 AI 摘要——可在下方用模板重新生成，或直接手写。）
             </div>
 
@@ -515,32 +515,38 @@ onMounted(async () => {
             <div class="section">
               <label>① 解析（选模板与字数档位，让 AI 生成）</label>
               <div class="row wrap parse-row">
-                <select v-model="templateId" style="width:auto;min-width:230px">
+                <select v-model="templateId" style="width: auto; min-width: 230px">
                   <option :value="null">AI 自动匹配模板</option>
                   <option v-for="t in templates" :key="t.id" :value="t.id">
                     {{ t.name }}
                   </option>
                 </select>
-                <select v-model.number="minChars" style="width:auto;min-width:96px">
+                <select v-model.number="minChars" style="width: auto; min-width: 96px">
                   <option v-for="c in charPresets" :key="c" :value="c">{{ c }} 字</option>
                 </select>
                 <button class="btn primary" :disabled="parsingBusy" @click="runParse">
-                  {{ parsingBusy ? '生成中…' : (parseResult && !parseResult.ok ? '重新生成' : 'AI 生成解析结果') }}
+                  {{
+                    parsingBusy
+                      ? '生成中…'
+                      : parseResult && !parseResult.ok
+                        ? '重新生成'
+                        : 'AI 生成解析结果'
+                  }}
                 </button>
                 <button v-if="parseText" class="btn ghost" @click="sendToOriginal">
                   送去原创区 →
                 </button>
               </div>
-              <div class="dim" style="font-size:11.5px;margin-top:4px">
+              <div class="dim" style="font-size: 11.5px; margin-top: 4px">
                 低于目标字数会自动重新生成（最多 3 次）
               </div>
-              <div v-if="parsingBusy" class="dim" style="margin-top:6px;font-size:11.5px">
+              <div v-if="parsingBusy" class="dim" style="margin-top: 6px; font-size: 11.5px">
                 正在生成（长内容需要 1–3 分钟）
               </div>
-              <div v-if="parseResult && !parseResult.ok" class="alert warn" style="margin-top:8px">
+              <div v-if="parseResult && !parseResult.ok" class="alert warn" style="margin-top: 8px">
                 {{ parseResult.error }}
               </div>
-              <div v-if="parseResult && parseResult.ok" class="alert info" style="margin-top:8px">
+              <div v-if="parseResult && parseResult.ok" class="alert info" style="margin-top: 8px">
                 已按模板「{{ parseResult.template?.name }}」生成 {{ parseResult.chars }} 字
                 <span v-if="parseResult.matched_by === 'ai'">（AI 自动匹配）</span>
               </div>
@@ -549,7 +555,7 @@ onMounted(async () => {
                 v-model="parseText"
                 rows="8"
                 placeholder="解析结果（可直接编辑，满意就送去原创区）"
-                style="margin-top:8px"
+                style="margin-top: 8px"
               ></textarea>
             </div>
 
@@ -576,8 +582,9 @@ onMounted(async () => {
                       class="tree-label"
                       :class="{ checked: partSelected(node.path) }"
                       @click="togglePartPath(node.path)"
-                    >{{ node.name }}</span>
-                    <span class="dim mono" style="margin-left:auto;font-size:11px">
+                      >{{ node.name }}</span
+                    >
+                    <span class="dim mono" style="margin-left: auto; font-size: 11px">
                       {{ partCount(node) }}
                     </span>
                   </div>
@@ -586,35 +593,36 @@ onMounted(async () => {
                       v-for="child in node.children"
                       :key="child.id"
                       class="tree-row"
-                      style="padding-left:16px"
+                      style="padding-left: 16px"
                     >
                       <span
                         class="tree-label"
                         :class="{ checked: partSelected(child.path) }"
                         @click="togglePartPath(child.path)"
-                      >{{ child.name }}</span>
-                      <span class="dim mono" style="margin-left:auto;font-size:11px">
+                        >{{ child.name }}</span
+                      >
+                      <span class="dim mono" style="margin-left: auto; font-size: 11px">
                         {{ partCount(child) }}
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
-              <div class="row" style="margin-top:8px">
+              <div class="row" style="margin-top: 8px">
                 <input
                   v-model="newPartition"
                   type="text"
                   placeholder="新分区，回车创建并选中"
-                  style="flex:1"
+                  style="flex: 1"
                   @keydown.enter.prevent="createPartition($event)"
                 />
               </div>
               <div
                 v-if="(current.pending_partitions || []).length"
                 class="row wrap"
-                style="margin-top:8px"
+                style="margin-top: 8px"
               >
-                <span class="dim" style="font-size:11.5px;width:100%">
+                <span class="dim" style="font-size: 11.5px; width: 100%">
                   待定分区（勾选后自动创建）：
                 </span>
                 <span
@@ -628,13 +636,14 @@ onMounted(async () => {
                   <span>{{ isNewPartitionChecked(p.name) ? '☑' : '☐' }}</span> +{{ p.name }}
                 </span>
               </div>
-              <div v-if="form.partitions.length" class="row wrap" style="margin-top:8px">
+              <div v-if="form.partitions.length" class="row wrap" style="margin-top: 8px">
                 <span
                   v-for="p in form.partitions"
                   :key="p"
                   class="check-chip checked"
                   @click="togglePartition(p)"
-                >{{ p }} ✕</span>
+                  >{{ p }} ✕</span
+                >
               </div>
             </div>
 
@@ -670,35 +679,35 @@ onMounted(async () => {
                   <span>{{ isNewTagChecked(t.name) ? '☑' : '☐' }}</span> +{{ t.name }}
                 </span>
               </div>
-              <div class="row" style="margin-top:8px">
+              <div class="row" style="margin-top: 8px">
                 <input
                   type="text"
                   placeholder="手动添加标签（回车）"
-                  style="flex:1"
+                  style="flex: 1"
                   @keydown.enter.prevent="addManualTag"
                 />
               </div>
             </div>
 
             <!-- ⑤ 确认入库：分区与标签都定了才入库 -->
-            <div class="row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-              <span class="dim" style="font-size:11.5px">
+            <div
+              class="row"
+              style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line)"
+            >
+              <span class="dim" style="font-size: 11.5px">
                 分区与标签确认后入库，手稿会成为图谱主节点
               </span>
-              <div class="spacer" style="flex:1"></div>
+              <div class="spacer" style="flex: 1"></div>
               <button class="btn primary" :disabled="saving" @click="confirm">
                 {{ saving ? '入库中…' : '确认入库' }}
               </button>
             </div>
           </div>
-
         </template>
-
       </div>
     </div>
   </div>
 </template>
-
 
 <style scoped>
 /* 步骤提示：灰字细排，不抢标题的视觉重量 */

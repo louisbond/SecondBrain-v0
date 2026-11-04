@@ -33,7 +33,7 @@ def is_local_endpoint(url: str) -> bool:
     # 去掉端口与用户信息
     if "@" in host:
         host = host.rsplit("@", 1)[1]
-    if host.startswith("["):  # IPv6 字面量
+    if host.startswith("["):  # noqa: SIM108  # IPv6 字面量（三元表达式反而更难读）
         host = host[1:].split("]", 1)[0]
     else:
         host = host.split(":", 1)[0]

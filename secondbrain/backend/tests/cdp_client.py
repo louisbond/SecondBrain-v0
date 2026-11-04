@@ -58,7 +58,7 @@ class Browser:
         self.dialogs: list[str] = []
 
     # ---------------- 生命周期 ----------------
-    async def __aenter__(self) -> "Browser":
+    async def __aenter__(self) -> Browser:
         await self.start()
         return self
 

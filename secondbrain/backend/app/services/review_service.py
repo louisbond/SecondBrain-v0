@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -304,9 +303,7 @@ class ReviewService:
             if not value:
                 continue
             stype = row["suggestion_type"]
-            if stype == "tag":
-                tags.append(value)
-            elif stype == "new_tag":
+            if stype == "tag" or stype == "new_tag":
                 tags.append(value)
             elif stype == "partition":
                 partitions.append(value)

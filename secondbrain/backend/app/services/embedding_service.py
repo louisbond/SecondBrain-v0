@@ -13,13 +13,13 @@
 
 from __future__ import annotations
 
-import array
 import hashlib
 import math
 import re
 import sqlite3
 import struct
 import threading
+from pathlib import Path
 from typing import Any
 
 from app.core.config import get_config
@@ -60,8 +60,7 @@ class EmbeddingService:
             except Exception:
                 self._model = None
             try:
-                from transformers import AutoTokenizer, AutoModel  # type: ignore
-                import torch  # type: ignore
+                from transformers import AutoModel, AutoTokenizer  # type: ignore
 
                 self._tokenizer = AutoTokenizer.from_pretrained(model_ref)
                 self._torch_model = AutoModel.from_pretrained(model_ref)
@@ -184,7 +183,7 @@ class EmbeddingService:
     def _cosine(self, a: list[float], b: list[float]) -> float:
         if not a or not b or len(a) != len(b):
             return 0.0
-        dot = sum(x * y for x, y in zip(a, b))
+        dot = sum(x * y for x, y in zip(a, b, strict=True))
         na = math.sqrt(sum(x * x for x in a))
         nb = math.sqrt(sum(y * y for y in b))
         if na == 0 or nb == 0:
@@ -326,7 +325,6 @@ class EmbeddingService:
             note = None
             try:
                 from app.core import vault as vault_mod
-                from pathlib import Path
 
                 note = vault_mod.read_note(Path(path))
             except Exception:
@@ -354,7 +352,6 @@ class EmbeddingService:
 
     def embed_note(self, note_path: str) -> bool:
         """为单个笔记生成向量。"""
-        from pathlib import Path
 
         from app.core import vault as vault_mod
 

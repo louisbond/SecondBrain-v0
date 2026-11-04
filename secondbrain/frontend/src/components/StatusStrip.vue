@@ -106,7 +106,7 @@ async function load() {
     const data = await workbenchApi.status(50)
     ownItems.value = data.items || []
     ownStats.value = data.stats || {}
-  } catch (e) {
+  } catch {
     /* 静默：状态条不该弹窗打扰 */
   }
 }
@@ -151,8 +151,8 @@ onUnmounted(() => {
   >
     <div class="strip-head">
       <span class="strip-title"><span>≡</span> {{ title }}</span>
-      <span class="dim mono" style="font-size:11px">共 {{ total }} 条</span>
-      <div class="spacer" style="flex:1"></div>
+      <span class="dim mono" style="font-size: 11px">共 {{ total }} 条</span>
+      <div class="spacer" style="flex: 1"></div>
       <button v-if="showAll" class="btn ghost sm" @click="goAll">全部 →</button>
     </div>
 
@@ -160,12 +160,7 @@ onUnmounted(() => {
       <!-- v33：四个状态**并行横排**（各占一列，不换行）。
            点状态徽标 → 进该状态的状态页（带筛选）。
            点具体任务 → 选中它（采集区联动）。 -->
-      <div
-        v-for="g in groups"
-        :key="g.key"
-        class="strip-group"
-        :class="g.cls"
-      >
+      <div v-for="g in groups" :key="g.key" class="strip-group" :class="g.cls">
         <button
           class="strip-badge"
           :class="g.cls"
@@ -190,13 +185,12 @@ onUnmounted(() => {
             class="strip-more"
             :title="`还有 ${g.count - g.shown.length} 条`"
             @click="goFiltered(g.key)"
-          >+{{ g.count - g.shown.length }}</span>
+            >+{{ g.count - g.shown.length }}</span
+          >
         </div>
       </div>
 
-      <span v-if="!total" class="dim" style="font-size:11.5px">
-        还没有任务
-      </span>
+      <span v-if="!total" class="dim" style="font-size: 11.5px"> 还没有任务 </span>
     </div>
   </div>
 </template>

@@ -17,7 +17,7 @@ from typing import Any
 from app.core import vault as vault_mod
 from app.core.config import get_config
 from app.core.db import get_db
-from app.core.tokenizer import build_fts_payload, normalize_tag
+from app.core.tokenizer import normalize_tag
 
 
 class TagService:

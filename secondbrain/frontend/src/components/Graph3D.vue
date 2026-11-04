@@ -61,9 +61,10 @@ function buildSim(force = false) {
     pts[i] = {
       id: nodes[i].id,
       kind: nodes[i].kind,
-      label: nodes[i].kind === 'manuscript'
-        ? `手稿·${nodes[i].note_title || nodes[i].label || ''}`
-        : nodes[i].label,
+      label:
+        nodes[i].kind === 'manuscript'
+          ? `手稿·${nodes[i].note_title || nodes[i].label || ''}`
+          : nodes[i].label,
       path: nodes[i].path,
       size: nodes[i].size || 1,
       x: r * Math.sin(phi) * Math.cos(theta),
@@ -161,11 +162,11 @@ function step(dt) {
 function project(p, w, h) {
   const cy = Math.cos(rotY)
   const sy = Math.sin(rotY)
-  let x = p.x * cy - p.z * sy
+  const x = p.x * cy - p.z * sy
   let z = p.x * sy + p.z * cy
   const cx = Math.cos(rotX)
   const sx = Math.sin(rotX)
-  let y = p.y * cx - z * sx
+  const y = p.y * cx - z * sx
   z = p.y * sx + z * cx
   const f = 900
   const scale = f / (f + z + 700)
@@ -337,7 +338,7 @@ function onPointerMove(e) {
 function onPointerUp() {
   dragging = false
 }
-function onClick(e) {
+function onClick() {
   if (!hovered.value) return
   selected.value = hovered.value
   emit('select', hovered.value)
@@ -390,10 +391,10 @@ defineExpose({ resetView })
       <span class="mono">{{ stats.nodes }} 节点 / {{ stats.links }} 连线 / {{ stats.fps }}fps</span>
     </div>
     <div class="graph-legend">
-      <span><i style="background:#ffd166"></i>个人手稿</span>
-      <span><i style="background:#4f9cf9"></i>笔记</span>
-      <span><i style="background:#f5a524"></i>分区</span>
-      <span><i style="background:#35c48e"></i>标签</span>
+      <span><i style="background: #ffd166"></i>个人手稿</span>
+      <span><i style="background: #4f9cf9"></i>笔记</span>
+      <span><i style="background: #f5a524"></i>分区</span>
+      <span><i style="background: #35c48e"></i>标签</span>
     </div>
     <button class="btn ghost sm graph-reset" @click="resetView">复位视角</button>
   </div>

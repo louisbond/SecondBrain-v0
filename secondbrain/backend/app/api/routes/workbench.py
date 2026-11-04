@@ -100,8 +100,9 @@ async def parse_with_template(req: ParseIn) -> dict[str, Any]:
     text = str(item.get("raw_text") or "")
     if not text.strip():
         # 没有正文时回落到 A 层 md 全文
-        from app.core import vault as vault_mod
         from pathlib import Path
+
+        from app.core import vault as vault_mod
 
         inbox_path = str(item.get("inbox_path") or "")
         if inbox_path:

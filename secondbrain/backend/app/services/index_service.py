@@ -13,15 +13,15 @@ from __future__ import annotations
 
 import sqlite3
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from app.core import vault as vault_mod
-from app.core import fts as fts_mod
+from app.core import fts as fts_mod, vault as vault_mod
 from app.core.config import get_config
 from app.core.db import get_db
-from app.core.tokenizer import build_fts_payload, normalize_tag
+from app.core.tokenizer import normalize_tag
 from app.services.link_resolver import LinkResolver
 
 # 工具自有目录（不作为存量笔记扫描）
@@ -385,7 +385,7 @@ class IndexService:
 
             # 3) note_tags
             id_rows = conn.execute(
-                "SELECT id, note_path FROM notes WHERE note_path IN (%s)"
+                "SELECT id, note_path FROM notes WHERE note_path IN (%s)"  # noqa: UP031
                 % ",".join("?" for _ in prepared),
                 [e["rel"] for e in prepared],
             ).fetchall()
@@ -585,7 +585,7 @@ class IndexService:
         # 注：分区冷启动已移到 partition_service.seed_from_vault_dirs（目录树 → 分区树）
 
         def _run(conn: sqlite3.Connection) -> None:
-            for name, count in collected.items():
+            for name, _count in collected.items():
                 conn.execute(
                     "INSERT INTO tags(name, source) VALUES(?, 'seed') "
                     "ON CONFLICT(name) DO UPDATE SET source = "

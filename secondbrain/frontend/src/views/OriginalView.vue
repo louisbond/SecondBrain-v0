@@ -6,7 +6,7 @@
  * - 加工区「送去原创区」的解析稿会自动载入（sessionStorage）
  * - 产出 C 层笔记
  */
-import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
+import { ref, onMounted, onUnmounted, inject, watch } from 'vue'
 import { notesApi, noteTemplatesApi } from '../api/client'
 import { loadDraft, clearDraft } from '../utils/draft'
 // **必须引入 Vditor 的样式**（v35 修）。
@@ -67,9 +67,7 @@ async function loadTemplates() {
       suggest_partition: t.suggest_partition || ''
     }))
     // 管理区把模板全删了也给个空白页兜底，否则按钮区空着没法写
-    templates.value = list.length
-      ? [...list, ...FALLBACK_TEMPLATES]
-      : [...FALLBACK_TEMPLATES]
+    templates.value = list.length ? [...list, ...FALLBACK_TEMPLATES] : [...FALLBACK_TEMPLATES]
     templatesError.value = ''
   } catch (e) {
     templates.value = [...FALLBACK_TEMPLATES]
@@ -157,7 +155,21 @@ function ensureEditor() {
       preview: {
         theme: { current: 'dark', path: `${VEDITOR_CDN}/dist/css/content-theme` }
       },
-      toolbar: ['emoji', 'bold', 'italic', 'strike', '|', 'list', 'ordered', 'check', '|', 'quote', 'link', 'undo', 'redo']
+      toolbar: [
+        'emoji',
+        'bold',
+        'italic',
+        'strike',
+        '|',
+        'list',
+        'ordered',
+        'check',
+        '|',
+        'quote',
+        'link',
+        'undo',
+        'redo'
+      ]
     })
     return waitEditorReady(editor)
   })
@@ -203,7 +215,7 @@ async function refreshInspiration() {
     const data = await notesApi.inspiration(draftTitle.value, body, 5)
     inspiration.value = data.results || []
     inspirationAvailable.value = data.available !== false
-  } catch (e) {
+  } catch {
     inspirationAvailable.value = false
   }
 }
@@ -246,7 +258,7 @@ async function saveDraftNote() {
   }
   saving.value = true
   try {
-    const res = await notesApi.create({
+    await notesApi.create({
       title: draftTitle.value.trim(),
       // 字段名必须是 body —— 后端 CreateNoteRequest.body。
       // 之前写的是 content，后端不认（body 默认 ""），
@@ -289,7 +301,7 @@ onUnmounted(() => {
   if (editor) {
     try {
       editor.destroy()
-    } catch (e) {
+    } catch {
       /* 忽略 */
     }
     editor = null
@@ -302,15 +314,15 @@ onUnmounted(() => {
     <div class="card">
       <div class="card-title">
         <span>✍️</span> 创作
-        <span class="dim" style="font-weight:400">（产出 C 层笔记）</span>
-        <div class="spacer" style="flex:1"></div>
+        <span class="dim" style="font-weight: 400">（产出 C 层笔记）</span>
+        <div class="spacer" style="flex: 1"></div>
         <button class="btn primary" :disabled="saving" @click="saveDraftNote">
           {{ saving ? '保存中…' : '保存为创作笔记' }}
         </button>
       </div>
 
-      <div class="row wrap" style="margin-bottom:8px">
-        <span class="dim" style="font-size:11.5px">空模板：</span>
+      <div class="row wrap" style="margin-bottom: 8px">
+        <span class="dim" style="font-size: 11.5px">空模板：</span>
         <button
           v-for="tpl in templates"
           :key="tpl.id"
@@ -322,28 +334,21 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <input
-        v-model="draftTitle"
-        type="text"
-        placeholder="原创稿标题"
-        style="margin:8px 0"
-      />
+      <input v-model="draftTitle" type="text" placeholder="原创稿标题" style="margin: 8px 0" />
 
       <div ref="editorEl" class="vditor-host"></div>
 
-      <div class="row wrap" style="margin-top:8px">
-        <span v-for="t in draftTags" :key="t" class="check-chip checked">
-          {{ t }} ✕
-        </span>
+      <div class="row wrap" style="margin-top: 8px">
+        <span v-for="t in draftTags" :key="t" class="check-chip checked"> {{ t }} ✕ </span>
         <input
           type="text"
           placeholder="加标签（回车）"
-          style="width:180px"
+          style="width: 180px"
           @keydown.enter.prevent="addDraftTag"
         />
       </div>
 
-      <div v-if="inspiration.length" style="margin-top:10px">
+      <div v-if="inspiration.length" style="margin-top: 10px">
         <label>你可能想引用</label>
         <div class="row wrap">
           <span
@@ -356,11 +361,7 @@ onUnmounted(() => {
           </span>
         </div>
       </div>
-      <div
-        v-else-if="!inspirationAvailable"
-        class="dim"
-        style="margin-top:8px;font-size:11.5px"
-      >
+      <div v-else-if="!inspirationAvailable" class="dim" style="margin-top: 8px; font-size: 11.5px">
         引用推荐不可用（向量后端降级）
       </div>
     </div>

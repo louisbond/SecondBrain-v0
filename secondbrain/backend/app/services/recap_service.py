@@ -35,7 +35,7 @@ class RecapService:
         yesterday = (today - timedelta(days=1)).strftime("%Y-%m-%d")
         today_str = today.strftime("%Y-%m-%d")
         week_ago = (today - timedelta(days=7)).strftime("%Y-%m-%d")
-        month_ago = (today - timedelta(days=30)).strftime("%Y-%m-%d")
+        _month_ago = (today - timedelta(days=30)).strftime("%Y-%m-%d")
 
         collected_yesterday = (
             self.db.scalar(
@@ -317,9 +317,8 @@ class RecapService:
             return False
         # 同一天只生成一次
         key = f"weekly_report_{now.strftime('%Y-%m-%d')}"
-        if self.db.query_one("SELECT value FROM meta WHERE key = ?", (key,)):
-            return False
-        return True
+        # 已生成过（meta 里有这个 key）→ 不用再生成
+        return not self.db.query_one("SELECT value FROM meta WHERE key = ?", (key,))
 
     def mark_weekly_generated(self) -> None:
         now = datetime.now()

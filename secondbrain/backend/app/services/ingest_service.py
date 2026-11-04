@@ -26,7 +26,6 @@ from app.core.parser import (
     ParsedLink,
     canonical_source_url,
     detect_platform,
-    normalize_url,
     parse_links,
 )
 
@@ -544,7 +543,7 @@ class IngestService:
         head, _, tail = body.partition(marker)
         content, _, source_part = tail.partition("## 来源")
 
-        paragraphs = [p for p in content.split("\n\n")]
+        paragraphs = content.split("\n\n")
         # 去掉首尾空段，落点更符合直觉
         while paragraphs and not paragraphs[0].strip():
             paragraphs.pop(0)

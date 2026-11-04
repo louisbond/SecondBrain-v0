@@ -103,7 +103,7 @@ def main() -> None:
     if args.vault:
         os.environ["SECOND_BRAIN_VAULT"] = args.vault
 
-    from app.core.config import get_config, store
+    from app.core.config import get_config
 
     cfg = get_config()
 

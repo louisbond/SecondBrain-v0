@@ -20,7 +20,7 @@ export function saveDraft(payload) {
       })
     )
     return true
-  } catch (e) {
+  } catch {
     return false
   }
 }
@@ -36,7 +36,7 @@ export function loadDraft() {
       return null
     }
     return data
-  } catch (e) {
+  } catch {
     return null
   }
 }
@@ -44,7 +44,7 @@ export function loadDraft() {
 export function clearDraft() {
   try {
     sessionStorage.removeItem(KEY)
-  } catch (e) {
+  } catch {
     /* 忽略 */
   }
 }

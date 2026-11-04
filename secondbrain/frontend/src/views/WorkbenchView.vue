@@ -13,12 +13,7 @@
  * 模板化解析（选模板 + 字数档位 + AI 生成）在**加工区**。
  */
 import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
-import {
-  collectApi,
-  itemsApi,
-  workbenchApi,
-  uploadApi
-} from '../api/client'
+import { collectApi, itemsApi, workbenchApi, uploadApi } from '../api/client'
 import StatusStrip from '../components/StatusStrip.vue'
 
 const toast = inject('toast')
@@ -60,22 +55,15 @@ const platformMeta = {
 }
 const platformOf = (p) => platformMeta[p] || { label: p, color: 'var(--web)' }
 
-const stateClass = (s) =>
-  ({ run: 'accent', done: 'ok', fail: 'danger', wait: '' }[s] || '')
+const stateClass = (s) => ({ run: 'accent', done: 'ok', fail: 'danger', wait: '' })[s] || ''
 
 const items = computed(() => parsed.value?.items || [])
 // 可入库 = 有链接 + 没重复。
 // 「只有标题没链接」的条目（比如粘贴文本里的说明行）不能提交——
 // 提交了后端会 422，前端还只能显示 [object Object]。
-const validItems = computed(() =>
-  items.value.filter((i) => i.url && !i.existing)
-)
-const dupCount = computed(
-  () => items.value.filter((i) => i.existing).length
-)
-const noUrlCount = computed(
-  () => items.value.filter((i) => !i.url).length
-)
+const validItems = computed(() => items.value.filter((i) => i.url && !i.existing))
+const dupCount = computed(() => items.value.filter((i) => i.existing).length)
+const noUrlCount = computed(() => items.value.filter((i) => !i.url).length)
 
 // ---------------- 数据加载 ----------------
 async function loadStatus() {
@@ -217,10 +205,7 @@ async function doSubmit() {
     })
     const skipped = (res && res.skipped) || []
     const msg = `已入库 ${validItems.value.length} 条，正在后台抓取原文`
-    toast(
-      skipped.length ? `${msg}（跳过 ${skipped.length} 条无链接）` : msg,
-      'success'
-    )
+    toast(skipped.length ? `${msg}（跳过 ${skipped.length} 条无链接）` : msg, 'success')
     rawText.value = ''
     parsed.value = null
     await loadStatus()
@@ -261,7 +246,6 @@ async function doQuickNote() {
     toast('速记失败：' + e.message, 'error')
   }
 }
-
 
 // ---------------- 配图 ----------------
 function onPickFile(e) {
@@ -358,10 +342,8 @@ onUnmounted(() => {
             <span class="mb-icon">⇪</span>
             <span class="mb-title">采集</span>
             <span class="dim mb-hint">粘贴即入库</span>
-            <div class="spacer" style="flex:1"></div>
-            <button class="btn ghost sm" @click="showQuickNote = !showQuickNote">
-              速记
-            </button>
+            <div class="spacer" style="flex: 1"></div>
+            <button class="btn ghost sm" @click="showQuickNote = !showQuickNote">速记</button>
           </div>
 
           <div v-if="showQuickNote" class="mb-quicknote">
@@ -390,7 +372,7 @@ onUnmounted(() => {
             <span v-if="parsed" class="dim mb-count">
               识别到 {{ parsed.count }} 条{{ submitting ? '，正在入库…' : '' }}
             </span>
-            <div class="spacer" style="flex:1"></div>
+            <div class="spacer" style="flex: 1"></div>
             <button v-if="dupCount" class="btn ghost sm" @click="removeDuplicates">
               去掉重复 {{ dupCount }}
             </button>
@@ -426,7 +408,7 @@ onUnmounted(() => {
               <span class="badge" :class="stateClass(current.state)">
                 {{ current.stage }}
               </span>
-              <div class="spacer" style="flex:1"></div>
+              <div class="spacer" style="flex: 1"></div>
               <span v-if="loadingContent" class="dim mb-hint">加载中…</span>
               <button
                 v-if="current.state === 'fail' || canRetry"
@@ -453,7 +435,7 @@ onUnmounted(() => {
               <span>{{ current.asr ? '📄 语音转写' : '📄 原文' }}</span>
               <span class="badge">{{ bodyLines.length }} 行</span>
               <span class="badge">{{ bodyCharCount }} 字</span>
-              <div class="spacer" style="flex:1"></div>
+              <div class="spacer" style="flex: 1"></div>
               <a class="mb-goto" href="/process">按模板生成 → 加工区</a>
             </div>
 
@@ -490,7 +472,7 @@ onUnmounted(() => {
                 v-for="(s, i) in shots"
                 :key="i"
                 class="badge"
-                style="cursor:pointer"
+                style="cursor: pointer"
                 @click="removeShot(i)"
               >
                 {{ s }} ×

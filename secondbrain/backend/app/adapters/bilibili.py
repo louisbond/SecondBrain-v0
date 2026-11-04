@@ -15,8 +15,6 @@
 
 from __future__ import annotations
 
-import json
-import re
 import time
 from typing import Any
 
@@ -242,7 +240,7 @@ class BilibiliAdapter(Adapter):
 def parse_cookie_file(path: str) -> str | None:
     """读取 Netscape 格式或纯文本 cookie 文件。"""
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        with open(path, encoding="utf-8", errors="replace") as fh:
             raw = fh.read()
     except OSError:
         return None

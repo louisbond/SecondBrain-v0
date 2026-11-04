@@ -30,7 +30,7 @@ class LinkResolver:
         self._built = False
 
     # -- 建索引 -----------------------------------------------------------
-    def build(self) -> "LinkResolver":
+    def build(self) -> LinkResolver:
         """扫描 vault 建立映射表（幂等）。"""
         if self._built:
             return self

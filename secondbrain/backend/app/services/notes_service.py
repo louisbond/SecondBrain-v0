@@ -17,7 +17,7 @@ from typing import Any
 from app.core import vault as vault_mod
 from app.core.config import get_config
 from app.core.db import get_db
-from app.core.tokenizer import build_fts_payload, normalize_tag
+from app.core.tokenizer import normalize_tag
 from app.services.link_resolver import LinkResolver
 
 
@@ -168,7 +168,7 @@ class NotesService:
         # 引用从正文自动补全（[[...]] → citations）
         links = vault_mod.parse_wikilinks(new_body)
         if links:
-            fm["citations"] = [f"[[{l}]]" for l in dict.fromkeys(links)]
+            fm["citations"] = [f"[[{stem}]]" for stem in dict.fromkeys(links)]
             vault_mod.write_note(path, fm, new_body)
 
         self._index_note(path, fm, new_body)
@@ -277,7 +277,7 @@ class NotesService:
             "type": "note",
             "form": str(frontmatter.get("form") or "fragment"),
             "tags": final_tags,
-            "citations": [f"[[{l}]]" for l in dict.fromkeys(links)],
+            "citations": [f"[[{stem}]]" for stem in dict.fromkeys(links)],
             "digested": bool(frontmatter.get("digested", False)),
             "created": vault_mod.now_iso(),
             "imported_from": "external",

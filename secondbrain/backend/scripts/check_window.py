@@ -9,7 +9,7 @@ HTML = (
     "<html><body style='font:20px system-ui;padding:40px'>"
     "SecondBrain 内嵌窗口自检 OK"
     "</body></html>"
-).encode("utf-8")
+).encode()
 
 
 class H(http.server.BaseHTTPRequestHandler):

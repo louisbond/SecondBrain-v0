@@ -13,9 +13,7 @@ const router = useRouter()
 const health = ref(null)
 /** v39：健康检查里失败的关键项（侧边栏提示用）。 */
 const failedChecks = computed(() =>
-  (health.value?.checks || [])
-    .filter((c) => !c.ok)
-    .map((c) => c.name)
+  (health.value?.checks || []).filter((c) => !c.ok).map((c) => c.name)
 )
 const stats = ref({})
 const pendingCount = ref(0)
@@ -59,25 +57,25 @@ function go(path, filter) {
 async function refresh() {
   try {
     health.value = await healthApi.get()
-  } catch (e) {
+  } catch {
     health.value = null
   }
   try {
     stats.value = await collectApi.stats()
-  } catch (e) {
+  } catch {
     stats.value = {}
   }
   try {
     const pending = await reviewApi.pending()
     pendingCount.value = (pending.items || []).length
-  } catch (e) {
+  } catch {
     pendingCount.value = 0
   }
   try {
     // 侧边栏周回顾：只要计数（card 是轻量接口，不写文件、不调 AI）
     const c = await recapApi.card()
     week.value = c || {}
-  } catch (e) {
+  } catch {
     week.value = {}
   }
 }
@@ -193,9 +191,7 @@ onUnmounted(() => {
             class="health-dot"
             :class="health?.ok === false ? 'bad' : health ? 'ok' : ''"
             :title="
-              health?.ok === false
-                ? '后端异常：' + (failedChecks.join('、') || '未知')
-                : '后端正常'
+              health?.ok === false ? '后端异常：' + (failedChecks.join('、') || '未知') : '后端正常'
             "
           ></span>
           <template v-if="health?.version">v{{ health.version }}</template>
@@ -204,18 +200,12 @@ onUnmounted(() => {
         </div>
       </div>
       <nav class="sidebar-nav">
-        <RouterLink
-          v-for="item in navItems"
-          :key="item.to"
-          :to="item.to"
-          class="nav-item"
-        >
+        <RouterLink v-for="item in navItems" :key="item.to" :to="item.to" class="nav-item">
           <span class="nav-icon">{{ item.icon }}</span>
           <span>{{ item.label }}</span>
-          <span
-            v-if="item.to === '/process' && pendingCount > 0"
-            class="nav-badge"
-          >{{ pendingCount }}</span>
+          <span v-if="item.to === '/process' && pendingCount > 0" class="nav-badge">{{
+            pendingCount
+          }}</span>
         </RouterLink>
       </nav>
 
@@ -249,17 +239,13 @@ onUnmounted(() => {
           </span>
         </button>
 
-        <button
-          class="sidebar-weekly-btn"
-          :disabled="weeklyBusy"
-          @click="makeWeekly"
-        >
+        <button class="sidebar-weekly-btn" :disabled="weeklyBusy" @click="makeWeekly">
           {{ weeklyBusy ? '生成中…' : '生成本周周报' }}
         </button>
       </div>
 
       <div class="sidebar-foot">
-        <div class="dim" style="font-size:11px;line-height:1.6">
+        <div class="dim" style="font-size: 11px; line-height: 1.6">
           共 {{ stats.total || 0 }} 条素材<br />
           本周采集 {{ stats.week || 0 }} 条
         </div>
@@ -280,20 +266,15 @@ onUnmounted(() => {
       </header>
 
       <main class="content">
-        <div v-if="searchModeWarning" class="alert warn">
-          ⚠ {{ searchModeWarning }}
-        </div>
+        <div v-if="searchModeWarning" class="alert warn">⚠ {{ searchModeWarning }}</div>
         <RouterView />
       </main>
     </div>
 
     <div class="toast-host">
-      <div
-        v-for="t in toastHost || []"
-        :key="t.id"
-        class="toast"
-        :class="t.type"
-      >{{ t.message }}</div>
+      <div v-for="t in toastHost || []" :key="t.id" class="toast" :class="t.type">
+        {{ t.message }}
+      </div>
     </div>
   </div>
 </template>

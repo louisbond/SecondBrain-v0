@@ -164,13 +164,15 @@ async function saveManuscript() {
 
 watch(() => route.params.path, load)
 // 全局刷新信号（窗口聚焦 / 切页）→ 重新拉数据，避免状态不同步
-watch(refreshSignal, () => { load() })
+watch(refreshSignal, () => {
+  load()
+})
 
 onMounted(load)
 </script>
 
 <template>
-  <div v-if="note" style="max-width:860px;margin:0 auto">
+  <div v-if="note" style="max-width: 860px; margin: 0 auto">
     <div class="card">
       <div class="row">
         <span class="badge" :class="note.level === 'note' ? 'accent' : ''">
@@ -181,17 +183,22 @@ onMounted(load)
         </span>
         <span v-if="note.digested" class="badge ok">已消化</span>
         <span v-else-if="note.level === 'processed'" class="badge warn">待补手稿</span>
-        <div class="spacer" style="flex:1"></div>
+        <div class="spacer" style="flex: 1"></div>
         <button class="btn ghost sm" @click="toggleGraph">反链视图</button>
         <button class="btn ghost sm" @click="archive">归档</button>
       </div>
-      <h1 style="margin:12px 0 8px;font-size:22px">{{ note.title }}</h1>
+      <h1 style="margin: 12px 0 8px; font-size: 22px">{{ note.title }}</h1>
       <div class="row wrap">
         <span v-for="t in note.tags" :key="t" class="tag">{{ t }}</span>
-        <span v-for="p in note.partitions" :key="p" class="tag" style="border-color:var(--accent-border)">
+        <span
+          v-for="p in note.partitions"
+          :key="p"
+          class="tag"
+          style="border-color: var(--accent-border)"
+        >
           {{ p }}
         </span>
-        <span class="dim mono" style="margin-left:auto">
+        <span class="dim mono" style="margin-left: auto">
           {{ note.frontmatter?.created || '' }}
         </span>
       </div>
@@ -215,12 +222,8 @@ onMounted(load)
       <div class="block-head">
         <span>✍️</span> 个人手稿
         <span v-if="!note.manuscript" class="badge warn">待补</span>
-        <div class="spacer" style="flex:1"></div>
-        <button
-          v-if="!editingManuscript"
-          class="btn ghost sm"
-          @click="startEditManuscript"
-        >
+        <div class="spacer" style="flex: 1"></div>
+        <button v-if="!editingManuscript" class="btn ghost sm" @click="startEditManuscript">
           {{ note.manuscript ? '编辑手稿' : '补写手稿' }}
         </button>
       </div>
@@ -230,7 +233,7 @@ onMounted(load)
           rows="5"
           placeholder="写下你的理解、疑问、行动点"
         ></textarea>
-        <div class="row" style="margin-top:8px">
+        <div class="row" style="margin-top: 8px">
           <button class="btn primary" :disabled="savingManuscript" @click="saveManuscript">
             {{ savingManuscript ? '保存中…' : '保存手稿' }}
           </button>
@@ -248,7 +251,7 @@ onMounted(load)
     <!-- 正文 -->
     <div v-if="note.body?.trim()" class="card">
       <div class="card-title">正文</div>
-      <div style="white-space:pre-wrap;line-height:1.8">{{ note.body }}</div>
+      <div style="white-space: pre-wrap; line-height: 1.8">{{ note.body }}</div>
     </div>
 
     <!-- 回查原文 -->
@@ -256,13 +259,13 @@ onMounted(load)
       <div class="block-head">
         <span>📄</span> 回查原文
         <span class="dim mono">{{ note.frontmatter.source_inbox }}</span>
-        <div class="spacer" style="flex:1"></div>
+        <div class="spacer" style="flex: 1"></div>
         <button class="btn ghost sm" @click="openSource">
           {{ showSource ? '收起' : '展开' }}
         </button>
       </div>
       <div v-if="showSource" class="block-body">
-        <div v-if="sourceContent" class="mono" style="white-space:pre-wrap;line-height:1.7">
+        <div v-if="sourceContent" class="mono" style="white-space: pre-wrap; line-height: 1.7">
           {{ sourceContent.body }}
         </div>
         <div v-else class="dim">加载中……</div>
@@ -281,7 +284,7 @@ onMounted(load)
               :key="b.note_path"
               :to="noteRoute(b.note_path)"
               class="list-item"
-              style="text-decoration:none;color:inherit"
+              style="text-decoration: none; color: inherit"
             >
               <div class="grow">
                 <div class="title">{{ b.title }}</div>
@@ -299,7 +302,7 @@ onMounted(load)
               :key="o.note_path"
               :to="noteRoute(o.note_path)"
               class="list-item"
-              style="text-decoration:none;color:inherit"
+              style="text-decoration: none; color: inherit"
             >
               <div class="grow">
                 <div class="title">{{ o.title }}</div>
@@ -311,7 +314,7 @@ onMounted(load)
         </div>
       </div>
 
-      <div v-if="showGraph" ref="graphEl" style="height:320px;margin-top:14px"></div>
+      <div v-if="showGraph" ref="graphEl" style="height: 320px; margin-top: 14px"></div>
     </div>
   </div>
 

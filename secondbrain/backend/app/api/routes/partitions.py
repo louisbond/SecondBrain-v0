@@ -73,7 +73,7 @@ async def partition_subtree(partition_id: int) -> dict[str, Any]:
     if svc.get(partition_id) is None:
         raise HTTPException(status_code=404, detail="分区不存在")
     ids = svc.subtree_ids(partition_id)
-    return {"ids": ids, "paths": [p for p in svc.descendant_paths(partition_id)]}
+    return {"ids": ids, "paths": list(svc.descendant_paths(partition_id))}
 
 
 @router.post("/seed-from-vault")

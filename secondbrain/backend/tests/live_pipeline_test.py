@@ -228,7 +228,6 @@ def main() -> int:
     # 取一条待核准条目；AI 不可用时用"人工处理"队列里的条目（手写摘要入库）
     status, pending = call("GET", "/api/review/pending")
     review_id = None
-    ai_available = True
     if isinstance(pending, dict):
         items = pending.get("items", [])
         manual = pending.get("manual", [])
@@ -239,11 +238,9 @@ def main() -> int:
             review_id = items[0]["id"]
         elif manual:
             review_id = manual[0]["id"]
-            ai_available = False
             print("     · AI 不可用，改走人工核准路径")
         elif failed:
             review_id = failed[0]["id"]
-            ai_available = False
             print("     · AI 不可用，改走 AI 失败条目的手工核准")
 
     if review_id:

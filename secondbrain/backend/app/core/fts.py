@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from app.core.tokenizer import build_match_query, fts_payload, search_mode
 
@@ -76,12 +75,10 @@ def make_snippet(src: str, query: str, width: int = 140) -> str:
 
     # 找第一个命中位置
     pos = -1
-    hit_len = 0
     for term in terms:
         found = lower.find(term.lower())
         if found >= 0 and (pos < 0 or found < pos):
             pos = found
-            hit_len = len(term)
     if pos < 0:
         return src[:width].replace("\n", " ")
 

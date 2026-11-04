@@ -13,7 +13,12 @@ import { createRouter, createWebHistory } from 'vue-router'
  *                               从采集区/加工区的状态横条「全部 →」跳入）
  */
 const routes = [
-  { path: '/', name: 'home', component: () => import('@/views/HomeView.vue'), meta: { title: '首页' } },
+  {
+    path: '/',
+    name: 'home',
+    component: () => import('@/views/HomeView.vue'),
+    meta: { title: '首页' }
+  },
   {
     path: '/workbench',
     name: 'workbench',
@@ -79,9 +84,7 @@ const router = createRouter({
 })
 
 router.afterEach((to) => {
-  document.title = to.meta?.title
-    ? `${to.meta.title} · SecondBrain`
-    : 'SecondBrain'
+  document.title = to.meta?.title ? `${to.meta.title} · SecondBrain` : 'SecondBrain'
 })
 
 export default router

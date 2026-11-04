@@ -81,7 +81,7 @@ def dom(path: str, timeout: int = 120) -> str:
     proc = subprocess.run(
         [
             EDGE, "--headless=new", "--disable-gpu", "--no-sandbox",
-            f"--virtual-time-budget=10000", "--dump-dom",
+            "--virtual-time-budget=10000", "--dump-dom",
             f"{BASE}{path}",
             f"--user-data-dir={DOCS / '_edge_ux'}",
         ],
@@ -202,7 +202,7 @@ def stage_5_chars_templates():
     check("默认档 800", d.get("default") == 800, f"default={d.get('default')}")
     check("档位包含 800", 800 in presets, str(presets))
     check("档位覆盖用户要求的区间",
-          set([200, 500, 1000, 1500, 2000, 3000, 5000]).issubset(set(presets)), str(presets))
+          {200, 500, 1000, 1500, 2000, 3000, 5000}.issubset(set(presets)), str(presets))
     code, d = api("GET", "/api/workbench/templates")
     tpls = d.get("templates") or []
     check("模板库非空", len(tpls) > 0, f"{len(tpls)} 个")

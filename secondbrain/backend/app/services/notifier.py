@@ -10,7 +10,6 @@ winotify 不可用时静默降级（不阻塞主流程），并把消息记入�
 from __future__ import annotations
 
 import threading
-from typing import Any
 
 from app.core.config import get_config
 

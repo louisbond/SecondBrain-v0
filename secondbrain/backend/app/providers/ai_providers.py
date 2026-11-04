@@ -20,14 +20,10 @@ v34：**workbuddy 链路已整体移除**（原设计 v0.5.0 §6.1 的三链之�
 from __future__ import annotations
 
 import json
-import re
-import shutil
-import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import ClassVar
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 
 import httpx
 

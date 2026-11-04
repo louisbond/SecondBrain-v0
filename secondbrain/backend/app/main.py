@@ -13,7 +13,6 @@ import hmac
 import os
 import socket
 import sys
-import threading
 from contextlib import asynccontextmanager
 from typing import Any
 

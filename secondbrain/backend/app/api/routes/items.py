@@ -116,10 +116,7 @@ async def retry_item(item_id: int) -> dict[str, Any]:
         "extracted",
         "raw_ready",
         "pending_review",
-    ):
-        svc.transition(item_id, "queued")
-        queue.enqueue(item_id, "extract")
-    elif status == "extract_failed":
+    ) or status == "extract_failed":
         svc.transition(item_id, "queued")
         queue.enqueue(item_id, "extract")
     elif status == "ai_failed":

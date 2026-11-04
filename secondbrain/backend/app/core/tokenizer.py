@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import re
 import threading
-from typing import Iterable
 
 _JIEBA_LOCK = threading.Lock()
 _JIEBA_STATE: dict[str, object] = {"available": False, "module": None, "error": None}

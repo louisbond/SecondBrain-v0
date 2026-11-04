@@ -47,10 +47,9 @@ def _main() -> int:
     log_path = setup_logging(cfg.data_dir)
     print("日志:", log_path)
 
-    from app.main import app
-
     # 探测 closed 事件：包装 run_desktop 的 closed 回调
     import app.desktop as desktop_mod
+    from app.main import app
 
     orig_run = desktop_mod.run_desktop
 

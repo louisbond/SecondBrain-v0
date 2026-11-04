@@ -48,7 +48,7 @@ const FILTERS = [
   { id: 'fail', label: '失败' }
 ]
 
-const stateClass = (s) => ({ run: 'accent', done: 'ok', fail: 'danger', wait: '' }[s] || '')
+const stateClass = (s) => ({ run: 'accent', done: 'ok', fail: 'danger', wait: '' })[s] || ''
 
 async function load() {
   loading.value = true
@@ -116,14 +116,16 @@ onUnmounted(() => {
           <div class="num danger">{{ stats.fail || 0 }}</div>
           <div class="dim">失败</div>
         </div>
-        <div class="spacer" style="flex:1"></div>
-        <div class="dim mono" style="align-self:center">
+        <div class="spacer" style="flex: 1"></div>
+        <div class="dim mono" style="align-self: center">
           <!-- v31：进度只统计**未完成**的条目（后端已改）。
                全都完成了显示「已全部完成」，比一个孤零零的 100% 清楚。 -->
           {{
             stats.pending
               ? `进行中进度 ${Math.round((stats.avg_progress || 0) * 100)}%`
-              : (stats.total ? '已全部完成' : '暂无任务')
+              : stats.total
+                ? '已全部完成'
+                : '暂无任务'
           }}
         </div>
         <button class="btn ghost sm" :disabled="loading" @click="load">
@@ -134,7 +136,7 @@ onUnmounted(() => {
 
     <!-- 筛选 + 列表 -->
     <div class="card">
-      <div class="tabs" style="margin-bottom:10px">
+      <div class="tabs" style="margin-bottom: 10px">
         <button
           v-for="f in FILTERS"
           :key="f.id"
@@ -146,27 +148,22 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <div
-        v-for="item in filtered"
-        :key="item.id"
-        class="task-item"
-        @click="openItem(item)"
-      >
+      <div v-for="item in filtered" :key="item.id" class="task-item" @click="openItem(item)">
         <div class="grow">
           <div class="title">
             {{ item.title || '未命名' }}
-            <span class="badge" :class="stateClass(item.state)" style="margin-left:6px">
+            <span class="badge" :class="stateClass(item.state)" style="margin-left: 6px">
               {{ item.stage || item.status }}
             </span>
           </div>
           <div v-if="item.error_detail" class="sub danger-text">
             {{ item.error_detail }}
           </div>
-          <div class="sub dim mono" style="font-size:11px">
+          <div class="sub dim mono" style="font-size: 11px">
             {{ item.platform_label || item.platform }} ·
             {{ (item.source_url || '').slice(0, 60) }}
           </div>
-          <div class="progress-track" style="margin-top:6px">
+          <div class="progress-track" style="margin-top: 6px">
             <div
               class="progress-bar"
               :class="{ fail: item.state === 'fail' }"
@@ -177,14 +174,14 @@ onUnmounted(() => {
         <button
           v-if="item.state === 'fail'"
           class="btn ghost sm"
-          style="align-self:center"
+          style="align-self: center"
           @click.stop="retry(item.id)"
         >
           重试
         </button>
       </div>
 
-      <div v-if="!filtered.length" class="empty" style="padding:24px 8px">
+      <div v-if="!filtered.length" class="empty" style="padding: 24px 8px">
         <div class="icon">≡</div>
         <div>{{ filter === 'all' ? '还没有任务' : '这一类暂时没有' }}</div>
       </div>
@@ -207,9 +204,15 @@ onUnmounted(() => {
   font-size: 22px;
   font-weight: 650;
 }
-.stat .num.accent { color: var(--accent); }
-.stat .num.ok { color: var(--ok, #35c48e); }
-.stat .num.danger { color: var(--danger, #e5484d); }
+.stat .num.accent {
+  color: var(--accent);
+}
+.stat .num.ok {
+  color: var(--ok, #35c48e);
+}
+.stat .num.danger {
+  color: var(--danger, #e5484d);
+}
 .task-item {
   display: flex;
   gap: 10px;

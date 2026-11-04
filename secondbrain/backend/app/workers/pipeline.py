@@ -10,8 +10,6 @@ kind → handler：
 
 from __future__ import annotations
 
-import subprocess
-import threading
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +43,6 @@ def _read_cookie() -> str | None:
 def handle_extract(item_id: int) -> None:
     """抓取任务。"""
     ingest = get_ingest_service()
-    db = get_db()
     cfg = get_config()
 
     item = ingest.get_item(item_id)
@@ -165,7 +162,6 @@ def _mark_raw_ready(item_id: int) -> None:
 def handle_asr(item_id: int) -> None:
     """ASR 转写任务：yt-dlp 抽音频 → faster-whisper 转写 → 写回 A 层。"""
     ingest = get_ingest_service()
-    cfg = get_config()
 
     item = ingest.get_item(item_id)
     if item is None:
@@ -282,7 +278,6 @@ def handle_ai(item_id: int) -> None:
         )
         return
 
-    import json
 
     def _run(conn) -> None:
         conn.execute(

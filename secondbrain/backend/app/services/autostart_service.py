@@ -11,7 +11,6 @@ Windows 任务计划程序用 `schtasks` 注册：
 
 from __future__ import annotations
 
-import os
 import platform
 import subprocess
 import sys
@@ -55,7 +54,7 @@ def _python_exe() -> str:
 def _app_command() -> str:
     """构造启动命令（打包后用 exe，开发态用 uvicorn）。"""
     cfg = get_config()
-    backend_dir = Path(__file__).resolve().parents[3]
+    _backend_dir = Path(__file__).resolve().parents[3]
     if getattr(sys, "frozen", False):
         return f'"{sys.executable}"'
     return f'"{_python_exe()}" -m uvicorn app.main:app --host 127.0.0.1 --port {cfg.web.port}'

@@ -9,9 +9,6 @@
 
 from __future__ import annotations
 
-import re
-from typing import Any
-
 import httpx
 
 from app.adapters.base import Adapter, ExtractResult, register

@@ -656,8 +656,8 @@ def ingest_status(item_id: int) -> str:
 
 class TestSearch(TestReviewFlow):
     def test_search_finds_chinese_substring(self):
-        from app.services.search_service import get_search_service
         from app.services.review_service import get_review_service
+        from app.services.search_service import get_search_service
 
         svc = get_review_service()
         item_id = self._make_reviewable()
@@ -1034,8 +1034,8 @@ class TestIndexService:
         assert isinstance(result.to_dict(), dict)
 
     def test_rebuild_is_idempotent(self):
-        from app.services.index_service import get_index_service
         from app.core.db import get_db
+        from app.services.index_service import get_index_service
 
         svc = get_index_service()
         svc.reindex_all()
@@ -1353,8 +1353,8 @@ class TestProviderConfig:
         assert "非法分区" not in [n["name"] for n in result.new_tags]
 
     def test_provider_fallback_on_rate_limit(self):
-        from app.providers.ai_providers import ProviderError, ProviderRouter
         from app.core.config import get_config
+        from app.providers.ai_providers import ProviderError, ProviderRouter
 
         router = ProviderRouter(cfg=get_config())
         router.switch("openai_compat", manual=True)
@@ -1384,8 +1384,8 @@ class TestProviderConfig:
         assert router.current_name == "ollama"
 
     def test_provider_no_fallback_when_disabled(self):
-        from app.providers.ai_providers import ProviderError, ProviderRouter
         from app.core.config import get_config
+        from app.providers.ai_providers import ProviderError, ProviderRouter
 
         cfg = get_config()
         cfg.ai.auto_fallback = False
@@ -2449,7 +2449,7 @@ class TestLifespanScope:
                     imported[(al.asname or al.name).split(".")[0]] = n.lineno
 
         # 找这些名字在**首次 import 之前**被读取的位置
-        first_import_line = min(imported.values()) if imported else 10**9
+        min(imported.values()) if imported else 10**9
         offenders = []
         for n in ast.walk(lifespan):
             if (

@@ -1,0 +1,34 @@
+# SecondBrain 后端工具配置（v39）
+#
+# 这里只放**工具**配置，不放依赖（依赖在 requirements.txt）。
+# 目的是让 lint / format 的行为**写进仓库**，而不是每个人本地各配一套。
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+# 构建产物与缓存目录
+exclude = ["build", "dist", ".pytest_cache", "__pycache__", "data"]
+
+[tool.ruff.lint]
+# E/W pycodestyle · F pyflakes · B bugbear · C4 comprehensions
+# SIM simplify · UP pyupgrade · I isort
+select = ["E", "F", "W", "B", "C4", "SIM", "UP", "I"]
+
+ignore = [
+    # 行宽：交给 formatter 管，不卡 CI（存量 118 处，改了 diff 全是噪音）
+    "E501",
+    # FastAPI 的 Depends()/Query() 在默认值里调用是官方写法，不是 bug
+    "B008",
+    # try/except: pass → contextlib.suppress：纯风格，存量 15 处，不值得全改
+    "SIM105",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试里会有"故意 import 却不直接用"的模块（靠插件/fixture 生效）
+"tests/*" = ["F401"]
+# 脚本目录同理
+"scripts/*" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+combine-as-imports = true

@@ -13,9 +13,10 @@ from __future__ import annotations
 import queue
 import sqlite3
 import threading
+from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import Future
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence, TypeVar
+from typing import Any, TypeVar
 
 from app.core.config import get_config
 
@@ -210,7 +211,7 @@ class Database:
         self.db_path = Path(db_path) if db_path else cfg.db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
-        self._write_queue: "queue.Queue[tuple[Callable[[sqlite3.Connection], Any], Future]]" = (
+        self._write_queue: queue.Queue[tuple[Callable[[sqlite3.Connection], Any], Future]] = (
             queue.Queue()
         )
         self._writer_thread: threading.Thread | None = None

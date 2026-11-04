@@ -11,7 +11,7 @@
  */
 import { ref, computed, onMounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
-import { searchApi, notesApi, noteRoute } from '../api/client'
+import { searchApi, noteRoute } from '../api/client'
 import Graph3D from '../components/Graph3D.vue'
 
 const toast = inject('toast')
@@ -45,7 +45,7 @@ async function loadVocab() {
       typeof x === 'string' ? { id: x, name: x, count: 0 } : x
     )
     partitionTree.value = p.tree || []
-  } catch (e) {
+  } catch {
     /* 词表加载失败不阻塞搜索 */
   }
 }
@@ -155,7 +155,6 @@ onMounted(async () => {
 
 <template>
   <div class="home-page">
-
     <!-- ① 搜索（v35：今日回顾已删，搜索与图谱填满整屏） -->
     <div class="card home-search">
       <div class="row">
@@ -163,7 +162,7 @@ onMounted(async () => {
           v-model="query"
           type="text"
           placeholder="搜索整个知识库…（回车）"
-          style="flex:1"
+          style="flex: 1"
           @keydown.enter="doSearch"
         />
         <button class="btn primary" :disabled="searching" @click="doSearch">
@@ -193,8 +192,9 @@ onMounted(async () => {
                   class="tree-label"
                   :class="{ checked: partChecked(node.path) }"
                   @click="togglePart(node.path)"
-                >{{ node.name }}</span>
-                <span class="dim mono" style="margin-left:auto;font-size:11px">
+                  >{{ node.name }}</span
+                >
+                <span class="dim mono" style="margin-left: auto; font-size: 11px">
                   {{ partCount(node) }}
                 </span>
               </div>
@@ -203,23 +203,22 @@ onMounted(async () => {
                   v-for="child in node.children"
                   :key="child.id"
                   class="tree-row"
-                  style="padding-left:16px"
+                  style="padding-left: 16px"
                 >
                   <span
                     class="tree-label"
                     :class="{ checked: partChecked(child.path) }"
                     @click="togglePart(child.path)"
-                  >{{ child.name }}</span>
-                  <span class="dim mono" style="margin-left:auto;font-size:11px">
+                    >{{ child.name }}</span
+                  >
+                  <span class="dim mono" style="margin-left: auto; font-size: 11px">
                     {{ partCount(child) }}
                   </span>
                 </div>
               </div>
             </div>
           </div>
-          <div v-if="!partitionTree.length" class="dim" style="font-size:11.5px">
-            还没有分区
-          </div>
+          <div v-if="!partitionTree.length" class="dim" style="font-size: 11.5px">还没有分区</div>
         </div>
 
         <div class="filter-col">
@@ -235,34 +234,29 @@ onMounted(async () => {
               <span>{{ selectedTags.includes(t.name) ? '☑' : '☐' }}</span> {{ t.name }}
               <span class="dim mono">{{ t.count }}</span>
             </span>
-            <span v-if="!tagList.length" class="dim" style="font-size:11.5px">
-              还没有标签
-            </span>
+            <span v-if="!tagList.length" class="dim" style="font-size: 11.5px"> 还没有标签 </span>
           </div>
-          <div class="filter-label" style="margin-top:10px">范围</div>
+          <div class="filter-label" style="margin-top: 10px">范围</div>
           <div class="row">
-            <label class="row" style="margin:0">
+            <label class="row" style="margin: 0">
               <input v-model="includeInbox" type="checkbox" /> 含收件箱
             </label>
-            <label class="row" style="margin:0">
+            <label class="row" style="margin: 0">
               <input v-model="includeArchived" type="checkbox" /> 含归档
             </label>
           </div>
         </div>
       </div>
 
-      <div v-if="total" class="dim mono" style="font-size:11.5px;margin-top:6px">
+      <div v-if="total" class="dim mono" style="font-size: 11.5px; margin-top: 6px">
         {{ total }} 条 · {{ elapsed }}ms · {{ searchMode }}
       </div>
-      <div
-        v-if="results.length"
-        class="search-results"
-      >
+      <div v-if="results.length" class="search-results">
         <div
           v-for="r in results"
           :key="r.note_path"
           class="list-item"
-          style="cursor:pointer"
+          style="cursor: pointer"
           @click="openNote(r.note_path)"
         >
           <div class="grow">
@@ -277,11 +271,11 @@ onMounted(async () => {
     <div class="card home-graph">
       <div class="card-title">
         <span>◈</span> 知识图谱
-        <span class="dim" style="font-weight:400;font-size:11.5px">
+        <span class="dim" style="font-weight: 400; font-size: 11.5px">
           手稿是主节点 · 拖拽旋转 · 滚轮缩放 · 点击打开
         </span>
-        <div class="spacer" style="flex:1"></div>
-        <span class="dim mono" style="font-size:11.5px">
+        <div class="spacer" style="flex: 1"></div>
+        <span class="dim mono" style="font-size: 11.5px">
           {{ graph.stats?.notes || 0 }} 笔记 · {{ graph.stats?.manuscripts || 0 }} 手稿 ·
           {{ graph.stats?.partitions || 0 }} 分区 · {{ graph.stats?.tags || 0 }} 标签
         </span>
@@ -295,15 +289,13 @@ onMounted(async () => {
         :height="0"
         @select="openGraphNode"
       />
-      <div v-if="graphSel" class="alert info graph-sel" style="margin-top:6px">
+      <div v-if="graphSel" class="alert info graph-sel" style="margin-top: 6px">
         已选中：<b>{{ graphSel.note_title || graphSel.label }}</b>
         <span class="dim">
           （{{ graphSel.kind === 'manuscript' ? '个人手稿' : graphSel.kind }}）
         </span>
       </div>
     </div>
-
-
   </div>
 </template>
 
