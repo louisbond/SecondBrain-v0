@@ -1,6 +1,6 @@
 {
   "name": "secondbrain-frontend",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,6 @@
   "dependencies": {
     "vue": "^3.4.21",
     "vue-router": "^4.3.0",
-    "pinia": "^2.1.7",
     "echarts": "^5.5.0",
     "vditor": "^3.8.10"
   },

@@ -12,6 +12,10 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+# v39：允许从**任意目录**跑（以前只能 cd backend 跑，否则 import app 失败）
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 BASE = os.environ.get("SB_BASE", "http://127.0.0.1:7688")
 
@@ -70,7 +74,12 @@ def main() -> int:
     status, data = call("GET", "/api/health")
     check("GET /api/health 返回 200", status == 200, f"got {status}")
     if isinstance(data, dict):
-        check("版本为 0.5.0", data.get("version") == "0.5.0")
+        # v39：版本号**不写死** —— 断言它等于后端唯一源 APP_VERSION。
+        # 以前这里写死 "0.5.0"，每次升版本都要改测试，忘了就红。
+        from app.core.config import APP_VERSION
+
+        check("版本与 APP_VERSION 一致", data.get("version") == APP_VERSION,
+              f"got {data.get('version')}, expect {APP_VERSION}")
         check("搜索模式已启用", data.get("search_mode") in ("jieba_bigram", "bigram"))
         check(
             "jieba 可用（无降级告警）",

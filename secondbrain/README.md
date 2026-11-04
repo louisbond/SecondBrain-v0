@@ -1,4 +1,4 @@
-# SecondBrain v0.5.0
+# SecondBrain v0.6.0
 
 > 自用优先的个人知识库：**采集 → 提炼 → 创作 → 运维**
 > 桌面常驻服务 + 本机浏览器 UI，不上外网。
@@ -41,6 +41,46 @@ cd backend && python run.py --no-frontend
 # 终端 B：前端
 cd frontend && npm run dev     # → http://localhost:5173（已代理 /api）
 ```
+
+### 开发与测试
+
+```bash
+# 一键跑全套检查（单测 + 契约 + 构建 + E2E + 边界 + 渲染 + 走查 + 审计）
+python scripts/check.py
+
+# 只跑不需要服务的（快，秒级）
+python scripts/check.py --quick
+
+# 列出所有检查项
+python scripts/check.py --list
+```
+
+需要服务的检查（E2E / 边界 / 渲染 / 走查 / 审计）会打 `http://127.0.0.1:7688`，
+**先把后端起起来**（`cd backend && python run.py`），否则脚本会直接提示并退出。
+
+| 检查项 | 命令 | 说明 |
+|---|---|---|
+| 后端单测 | `pytest tests/test_secondbrain.py` | 领域逻辑 + 服务 + 迁移 |
+| 前后端契约 | `pytest tests/frontend_contract_test.py` | 接口形状与前端调用一致 |
+| 前端构建 | `npm run build` | 也会自动同步 Vditor 运行时资源 |
+| E2E 冒烟 | `python tests/e2e_smoke.py` | 主链路 |
+| 边界用例 | `python tests/edge_case_test.py` | 空数据 / 异常输入 |
+| 渲染检查 | `python tests/frontend_render_test.py` | 每页关键文案 + 无运行时错误 |
+| 用户走查 | `python scripts/user_journey_test.py` | 真实点一遍主要页面 |
+| 控件审计 | `python tests/control_audit.py` | 可点的控件逐个点，抓 JS 报错 |
+
+**约定**（成熟软件的基本要求）：
+
+- **版本号只有一个源**：`backend/app/core/config.py` 的 `APP_VERSION`。
+  后端接口、前端侧边栏、打包产物都用它，别再硬编码。
+- **诊断逻辑只有一份**：`backend/app/services/diagnostics.py`。
+  `/api/health`（轻量关键项，前端每 20 秒轮询）与
+  `/api/workbench/diagnose`（全套，用户手动点）共用它。
+- **所有网络请求都要有超时**：`frontend/src/api/client.js` 默认 30s，
+  长任务单独放宽；超时与"连不上"给不同的提示。
+- **前端异常不许静默**：`main.js` 里有全局 errorHandler / unhandledrejection
+  兜底，任何未捕获错误都会弹提示。
+- **用户数据绝不入库**：`.gitignore` 挡掉 `data/`、`logs/`、真实 config。
 
 ### 打包分发（P10）
 

@@ -230,6 +230,40 @@ body {
 
 /* v35：导航项加大，让侧边栏看起来是"满"的
    （用户：一级导航要看上去满，可以调整内容或空间） */
+/* v39：侧边栏版本行旁的健康指示点 */
+.health-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+  background: var(--text-dim);
+}
+.health-dot.ok {
+  background: var(--ok, #35c48e);
+}
+.health-dot.bad {
+  background: var(--danger, #e5484d);
+}
+
+/* v39：侧边栏版本行旁的健康指示点 */
+.health-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+  background: var(--text-dim);
+}
+.health-dot.ok {
+  background: var(--ok, #35c48e);
+}
+.health-dot.bad {
+  background: var(--danger, #e5484d);
+}
+
 .nav-item {
   display: flex;
   align-items: center;

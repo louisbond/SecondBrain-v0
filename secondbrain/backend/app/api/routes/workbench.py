@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.config import APP_VERSION
 from app.services.ingest_service import get_ingest_service
 from app.services.template_service import get_template_service
 from app.services.workbench_service import get_workbench_service
@@ -210,74 +211,22 @@ async def chars_presets() -> dict[str, Any]:
 # ---------------------------------------------------------------- 功能区
 @router.get("/diagnose")
 async def diagnose() -> dict[str, Any]:
-    """自检诊断：配置 / 数据库 / 索引 / Provider / ASR / 磁盘。"""
-    import shutil
-    from pathlib import Path
+    """自检诊断：配置 / 数据库 / 索引 / Provider / ASR / 磁盘。
 
-    from app.core.config import get_config
-    from app.core.db import get_db
+    v39：实现搬到 `app/services/diagnostics.py` —— 诊断是领域逻辑，
+    不该住在路由里。`/api/health` 现在复用同一份检查，
+    不会再出现"health 说好、diagnose 说坏"的两套结论。
+    """
+    from app.services.diagnostics import collect_checks, summarize
 
-    cfg = get_config()
-    db = get_db()
-    checks: list[dict[str, Any]] = []
-
-    def _add(name: str, ok: bool, detail: str = "") -> None:
-        checks.append({"name": name, "ok": ok, "detail": detail})
-
-    _add("vault 存在", Path(cfg.vault.path).exists(), str(cfg.vault.path))
-    _add("数据库存在", Path(cfg.db_path).exists(), str(cfg.db_path))
-    try:
-        n_items = db.query_one("SELECT COUNT(*) AS c FROM items")["c"]
-        n_notes = db.query_one("SELECT COUNT(*) AS c FROM notes")["c"]
-        n_parts = db.query_one("SELECT COUNT(*) AS c FROM partitions")["c"]
-        _add("数据可读", True, f"条目 {n_items} / 笔记 {n_notes} / 分区 {n_parts}")
-    except Exception as exc:  # noqa: BLE001
-        _add("数据可读", False, str(exc))
-
-    try:
-        from app.core.db import get_db
-        from app.services.index_service import get_index_service
-
-        idx = get_index_service()
-        n_indexed = int(
-            get_db().query_one("SELECT COUNT(*) AS c FROM notes")["c"]
-        )
-        _add("索引已建立", n_indexed > 0, f"已索引笔记 {n_indexed} 篇")
-    except Exception as exc:  # noqa: BLE001
-        _add("索引已建立", False, str(exc))
-
-    try:
-        from app.providers.ai_providers import get_router
-
-        router = get_router()
-        _add(
-            "AI 主链",
-            True,
-            f"{router.current_name}（降级中：{router.fallback_active}）",
-        )
-    except Exception as exc:  # noqa: BLE001
-        _add("AI 主链", False, str(exc))
-
-    try:
-        from app.services.asr_service import get_asr_service
-
-        info = get_asr_service().info()
-        _add(
-            "ASR 可用",
-            bool(info.get("available")),
-            f"引擎 {info.get('engine')} / 模型 {info.get('model_size')}",
-        )
-    except Exception as exc:  # noqa: BLE001
-        _add("ASR 可用", False, str(exc))
-
-    usage = shutil.disk_usage(str(cfg.data_dir))
-    _add(
-        "磁盘空间",
-        usage.free > 500 * 1024 * 1024,
-        f"剩余 {usage.free // (1024 * 1024)} MB",
-    )
-
-    return {"ok": all(c["ok"] for c in checks), "checks": checks, "version": "0.5.0"}
+    checks = collect_checks()
+    state = summarize(checks)
+    return {
+        "ok": state["ok"],
+        "degraded": state["degraded"],
+        "checks": checks,
+        "version": APP_VERSION,
+    }
 
 
 @router.post("/cache/clean")

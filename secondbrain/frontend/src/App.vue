@@ -11,6 +11,12 @@ import { healthApi, collectApi, reviewApi, recapApi } from './api/client'
 const route = useRoute()
 const router = useRouter()
 const health = ref(null)
+/** v39：健康检查里失败的关键项（侧边栏提示用）。 */
+const failedChecks = computed(() =>
+  (health.value?.checks || [])
+    .filter((c) => !c.ok)
+    .map((c) => c.name)
+)
 const stats = ref({})
 const pendingCount = ref(0)
 const toastHost = ref(null)
@@ -145,6 +151,8 @@ watch(
 //   窗口关闭 → pywebview 事件 → stop_backend + os._exit(0) → 缓存数据保留在磁盘。
 
 onMounted(() => {
+  // v39：把 toast 挂到 window，供 main.js 的全局错误兜底复用（样式统一 + 去重）
+  window.__sbToast = toast
   refresh()
   timer = setInterval(refresh, 20000)
   // 窗口重新获得焦点 → 通知所有视图重拉数据
@@ -165,6 +173,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (timer) clearInterval(timer)
   if (focusHandler) window.removeEventListener('focus', focusHandler)
+  if (window.__sbToast === toast) window.__sbToast = null
 })
 </script>
 
@@ -173,7 +182,26 @@ onUnmounted(() => {
     <aside class="sidebar">
       <div class="sidebar-brand">
         <h1>SecondBrain</h1>
-        <div class="version">v0.5.0 · 本机</div>
+        <!-- v39：版本号**从后端取**，不再前端硬编码。
+             以前这里写死 v0.5.0，后端都迭代到 v38 了还显示 0.5.0 ——
+             用户看到的版本和真实版本对不上。取不到时回退到 '—'（不显示假版本）。
+
+             后端健康状态不 ok 时标红：v39 之前 /api/health 恒返回 ok:true，
+             数据库坏了界面也看不出来。 -->
+        <div class="version">
+          <span
+            class="health-dot"
+            :class="health?.ok === false ? 'bad' : health ? 'ok' : ''"
+            :title="
+              health?.ok === false
+                ? '后端异常：' + (failedChecks.join('、') || '未知')
+                : '后端正常'
+            "
+          ></span>
+          <template v-if="health?.version">v{{ health.version }}</template>
+          <template v-else>·</template>
+          · 本机
+        </div>
       </div>
       <nav class="sidebar-nav">
         <RouterLink

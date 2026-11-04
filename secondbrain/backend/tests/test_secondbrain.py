@@ -2543,3 +2543,63 @@ class TestNoteTemplates:
         added = svc.restore_defaults()
         assert added >= 1
         assert any(t["name"] == "规则模板" for t in svc.list())
+
+
+class TestMaturityBasics:
+    """v39：成熟软件的基本规范 —— 版本单一源 / 健康检查说真话。
+
+    这两条都是**曾经真实出过问题**的地方：
+
+    · 版本号散在三处硬编码（FastAPI app、/api/health、/diagnose），
+      而 `APP_VERSION` 没人用 —— 于是侧边栏显示 0.5.0，
+      实际代码已经迭代到 v38。用户看到的和真实的对不上。
+    · `/api/health` 恒返回 `ok: true`，数据库坏了也说健康。
+    """
+
+    def test_version_has_single_source(self):
+        """源码里不该再有硬编码版本号。"""
+        import re
+        from pathlib import Path
+
+        from app.core.config import APP_VERSION
+
+        app_dir = Path(__file__).resolve().parent.parent / "app"
+        # 形如 version="0.5.0" 或 "version": "0.5.0" 的字面量
+        pattern = re.compile(r'version["\']?\s*[:=]\s*["\'](\d+\.\d+\.\d+)["\']')
+        offenders = []
+        for py in app_dir.rglob("*.py"):
+            for m in pattern.finditer(py.read_text(encoding="utf-8")):
+                if m.group(1) != APP_VERSION:
+                    offenders.append(f"{py.relative_to(app_dir)}: {m.group(0)}")
+        assert not offenders, f"这些地方硬编码了版本号，应改用 APP_VERSION：{offenders}"
+
+    def test_health_reports_real_state(self):
+        """health 的 ok 要由检查结果决定，不是写死的 true。"""
+        import asyncio
+
+        from app.main import health
+
+        payload = asyncio.run(health())
+        assert "checks" in payload, "health 没有返回检查明细"
+        names = {c["name"] for c in payload["checks"]}
+        assert {"vault 存在", "数据库存在", "数据可读"} <= names
+
+        # ok 必须与关键项一致（不能恒为 true）
+        critical_ok = all(c["ok"] for c in payload["checks"] if c["name"] in
+                          ("vault 存在", "数据库存在", "数据可读"))
+        assert payload["ok"] == critical_ok, payload
+
+    def test_health_and_diagnose_share_one_implementation(self):
+        """health 与 diagnose 必须共用 diagnostics 模块（不能各写一套）。"""
+        import inspect
+
+        from app.services import diagnostics
+
+        assert hasattr(diagnostics, "collect_checks")
+        assert hasattr(diagnostics, "collect_critical_checks")
+
+        # 路由里不应再有自己实现的检查逻辑
+        from app.api.routes import workbench
+
+        src = inspect.getsource(workbench.diagnose)
+        assert "collect_checks" in src, "diagnose 没走 diagnostics 模块"

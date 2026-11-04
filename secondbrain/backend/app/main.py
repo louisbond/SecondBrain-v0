@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.core.config import get_config
+from app.core.config import APP_VERSION, get_config
 from app.core.db import get_db
 from app.core.tokenizer import jieba_error, search_mode
 
@@ -125,7 +125,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SecondBrain",
-    version="0.5.0",
+    version=APP_VERSION,
     description="自用优先的个人知识库：采集 → 提炼 → 创作 → 运维",
     lifespan=lifespan,
 )
@@ -159,14 +159,28 @@ async def lan_token_guard(request: Request, call_next):
 
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
-    """健康检查（设置页 / 启动自检用）。"""
+    """健康检查（设置页 / 启动自检 / 前端轮询用）。
+
+    v39：`ok` 改成**真实反映状态**，不再恒为 true。
+    以前数据库坏了、vault 目录被删了，它照样说"健康"。
+
+    这里只跑**关键项**（轻量）：前端每 20 秒轮询一次，
+    碰 ASR/磁盘/Provider 会拖慢每次轮询 —— 全套检查在
+    `/api/workbench/diagnose`（用户手动触发）。
+    两边共用 `app/services/diagnostics.py`，不会各说各话。
+    """
+    from app.services.diagnostics import collect_critical_checks, summarize
+
     cfg = get_config()
     db = get_db()
     mode = search_mode()
+    checks = collect_critical_checks()
+    state = summarize(checks)
     payload: dict[str, Any] = {
-        "ok": True,
+        "ok": state["ok"],
+        "checks": checks,
         "app": "SecondBrain",
-        "version": "0.5.0",
+        "version": APP_VERSION,
         "port": cfg.web.port,
         "host": cfg.web.host,
         "allow_lan": cfg.web.allow_lan,

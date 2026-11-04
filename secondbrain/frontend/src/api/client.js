@@ -85,6 +85,17 @@ function readableError(data, status) {
   return fallback
 }
 
+/**
+ * 默认请求超时（毫秒）。
+ *
+ * v39：以前 fetch **没有任何超时** —— 后端卡住（AI 生成、ASR、索引重建）
+ * 时界面就一直转圈，用户既看不到提示也等不到结果，只能强刷。
+ * 成熟软件的每个网络调用都必须有上限：
+ *   · 普通读接口 30s 足够
+ *   · 长任务（模板化解析 / 备份 / 索引）单独放宽
+ */
+const DEFAULT_TIMEOUT_MS = 30000
+
 async function request(path, options = {}) {
   const headers = {
     ...(options.headers || {})
@@ -94,11 +105,32 @@ async function request(path, options = {}) {
   }
   if (lanToken) headers['x-sb-token'] = lanToken
 
+  // 超时控制：AbortController（浏览器原生，不引依赖）
+  const timeout = Number(options.timeout) > 0 ? Number(options.timeout) : DEFAULT_TIMEOUT_MS
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeout)
+  const startedAt = Date.now()
+
   let res
   try {
-    res = await fetch(BASE + path, { ...options, headers })
+    res = await fetch(BASE + path, { ...options, headers, signal: controller.signal })
   } catch (err) {
+    // 超时和"连不上"要分开说：前者是后端忙/卡，后者是没启动
+    if (err && err.name === 'AbortError') {
+      throw new ApiError(
+        `请求超时（${Math.round(timeout / 1000)} 秒无响应）。` +
+          '后端可能在执行长任务，稍后再试，或到「设置 → 维护与系统」看诊断。',
+        0,
+        String(err)
+      )
+    }
     throw new ApiError('无法连接后端服务，请确认 SecondBrain 正在运行', 0, String(err))
+  } finally {
+    clearTimeout(timer)
+    if (options.onSlow) {
+      const cost = Date.now() - startedAt
+      if (cost > timeout * 0.6) options.onSlow(cost)
+    }
   }
 
   if (res.status === 401) {
@@ -122,15 +154,16 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  get: (path) => request(path),
-  post: (path, body) =>
+  get: (path, options) => request(path, { ...(options || {}) }),
+  post: (path, body, options) =>
     request(path, {
+      ...(options || {}),
       method: 'POST',
       body: body === undefined ? undefined : JSON.stringify(body)
     }),
-  put: (path, body) =>
-    request(path, { method: 'PUT', body: JSON.stringify(body) }),
-  del: (path) => request(path, { method: 'DELETE' })
+  put: (path, body, options) =>
+    request(path, { ...(options || {}), method: 'PUT', body: JSON.stringify(body) }),
+  del: (path, options) => request(path, { ...(options || {}), method: 'DELETE' })
 }
 
 // ---- 具体接口 --------------------------------------------------------
