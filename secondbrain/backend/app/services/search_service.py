@@ -168,7 +168,7 @@ class SearchService:
         }
 
     # -- 标签筛选 ---------------------------------------------------------
-    def list_tags(self) -> list[dict[str, Any]]:
+    def list_tags(self) -> dict[str, list[dict[str, Any]]]:
         """受控词表（标签 + 分区）。"""
         tags = self.db.query(
             "SELECT t.id, t.name, t.source, COUNT(nt.note_id) AS count "

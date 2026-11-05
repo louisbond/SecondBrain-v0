@@ -67,7 +67,9 @@ class Provider(Protocol):
 
     def health(self) -> ProviderHealth: ...
 
-    def complete(self, prompt: str, *, system: str = "") -> str: ...
+    def complete(
+        self, prompt: str, *, system: str = "", timeout: float | None = None
+    ) -> str: ...
 
 
 # --------------------------------------------------------------------------
@@ -372,8 +374,10 @@ class ProviderRouter:
             "last_error": self.last_error,
             "cached": bool(self._health_cache) and not force,
         }
-        self._health_cache = payload
-        self._health_cache_at = now
+        # ClassVar 必须经类赋值：self.xxx = ... 会创建实例属性、遮蔽类变量，
+        # 于是「60 秒健康缓存」对每个实例各存一份，缓存就失效了。
+        ProviderRouter._health_cache = payload
+        ProviderRouter._health_cache_at = now
         return dict(payload)
 
 

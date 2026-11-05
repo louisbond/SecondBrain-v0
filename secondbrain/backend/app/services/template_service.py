@@ -188,7 +188,7 @@ class TemplateService:
     def _was_deleted(self, name: str) -> bool:
         """用户是否删过这个内置模板。"""
         try:
-            row = self.db.query_one(
+            row = get_db().query_one(
                 "SELECT name FROM deleted_templates WHERE name = ?", (name,)
             )
             return row is not None
@@ -197,7 +197,7 @@ class TemplateService:
 
     def _remember_deleted(self, name: str) -> None:
         try:
-            self.db.write(
+            get_db().write(
                 lambda conn: conn.execute(
                     "INSERT OR IGNORE INTO deleted_templates(name, deleted_at) VALUES(?, ?)",
                     (name, now_iso()),

@@ -24,6 +24,14 @@ from typing import Any
 CRITICAL = ("vault 存在", "数据库存在", "数据可读")
 
 
+def _count(db: Any, sql: str) -> int:
+    """COUNT(*) 必有一行；query_one 类型是 Row | None，这里显式收窄。"""
+    row = db.query_one(sql)
+    if row is None:
+        raise RuntimeError(f"COUNT 查询没有返回行：{sql}")
+    return int(row["c"])
+
+
 def collect_checks() -> list[dict[str, Any]]:
     """跑一遍自检，返回 [{name, ok, detail}]。任何一项出错都不影响其它项。"""
     from app.core.config import get_config
@@ -42,9 +50,9 @@ def collect_checks() -> list[dict[str, Any]]:
     # ---- 数据可读 ----
     try:
         db = get_db()
-        n_items = db.query_one("SELECT COUNT(*) AS c FROM items")["c"]
-        n_notes = db.query_one("SELECT COUNT(*) AS c FROM notes")["c"]
-        n_parts = db.query_one("SELECT COUNT(*) AS c FROM partitions")["c"]
+        n_items = _count(db, "SELECT COUNT(*) AS c FROM items")
+        n_notes = _count(db, "SELECT COUNT(*) AS c FROM notes")
+        n_parts = _count(db, "SELECT COUNT(*) AS c FROM partitions")
         _add("数据可读", True, f"条目 {n_items} / 笔记 {n_notes} / 分区 {n_parts}")
     except Exception as exc:  # noqa: BLE001
         _add("数据可读", False, str(exc))
@@ -54,7 +62,7 @@ def collect_checks() -> list[dict[str, Any]]:
         from app.services.index_service import get_index_service
 
         get_index_service()  # 确保实例可用
-        n_indexed = int(db.query_one("SELECT COUNT(*) AS c FROM notes")["c"])
+        n_indexed = _count(db, "SELECT COUNT(*) AS c FROM notes")
         _add("索引已建立", n_indexed > 0, f"已索引笔记 {n_indexed} 篇")
     except Exception as exc:  # noqa: BLE001
         _add("索引已建立", False, str(exc))
@@ -117,7 +125,7 @@ def collect_critical_checks() -> list[dict[str, Any]]:
     _add("vault 存在", Path(cfg.vault.path).exists(), str(cfg.vault.path))
     _add("数据库存在", Path(cfg.db_path).exists(), str(cfg.db_path))
     try:
-        n_items = get_db().query_one("SELECT COUNT(*) AS c FROM items")["c"]
+        n_items = _count(get_db(), "SELECT COUNT(*) AS c FROM items")
         _add("数据可读", True, f"条目 {n_items}")
     except Exception as exc:  # noqa: BLE001
         _add("数据可读", False, str(exc))

@@ -287,6 +287,8 @@ class IngestService:
                     "VALUES(?,?,?,?,?)",
                     (url, platform, title or None, "queued", vault_mod.now_iso()),
                 )
+                # sqlite3.Cursor.lastrowid 类型是 int | None；INSERT 后必有值
+                assert cur.lastrowid is not None
                 return int(cur.lastrowid)
             except sqlite3.IntegrityError:
                 return None
@@ -301,6 +303,8 @@ class IngestService:
                 "VALUES(?,?,'pending',?,?,?)",
                 (item_id, kind, priority, vault_mod.now_iso(), vault_mod.now_iso()),
             )
+            # sqlite3.Cursor.lastrowid 类型是 int | None；INSERT 后必有值
+            assert cur.lastrowid is not None
             return int(cur.lastrowid)
 
         return self.db.write(_run)
@@ -699,6 +703,8 @@ class IngestService:
                     vault_mod.now_iso(),
                 ),
             )
+            # sqlite3.Cursor.lastrowid 类型是 int | None；INSERT 后必有值
+            assert cur.lastrowid is not None
             return int(cur.lastrowid)
 
         item_id = self.db.write(_run)

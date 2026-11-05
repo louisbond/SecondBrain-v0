@@ -69,6 +69,8 @@ class JobQueue:
                 "VALUES(?,?,'pending',?,?,?)",
                 (item_id, kind, priority, now_iso(), now_iso()),
             )
+            # sqlite3.Cursor.lastrowid 类型是 int | None；INSERT 后必有值
+            assert cur.lastrowid is not None
             return int(cur.lastrowid)
 
         return self.db.write(_run)

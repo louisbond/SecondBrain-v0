@@ -32,3 +32,38 @@ ignore = [
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
 combine-as-imports = true
+
+
+# ---------------------------------------------------------------------------
+# 类型检查（v42）
+#
+# 项目是纯 Python + 类型标注，没上 strict —— strict 会把存量几百处隐式 Any
+# 全翻出来，噪音淹没真问题。这里的规则集只做一件事：
+#   **把"运行时才会炸"的类型错误提前到 CI**。
+# 实测首次接入抓到 4 个真 bug（不存在的 self.db、多余的 .fetchall()、
+# ClassVar 被实例遮蔽、None 直接迭代），全部已修。
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.13"
+files = ["app"]
+# 第三方库（jieba / yt-dlp / faster-whisper / onnxruntime / winotify …）
+# 没有类型存根；它们都在函数内惰性 import，不值得为它们写 stub。
+ignore_missing_imports = true
+# 不开 warn_unused_ignores：代码里有一批 `# type: ignore` 是给
+# *没装库* 的环境写的（webview / winotify / faster_whisper …）。
+# 装了库或开了 ignore_missing_imports 后它们就"多余"，
+# 于是同一份代码在 CI 与本机报不同的错 —— 环境相关的告警不值得看。
+warn_redundant_casts = true
+strict_equality = true
+exclude = ["build", "dist", "data", "scripts", "tests"]
+
+
+# ---------------------------------------------------------------------------
+# 类型检查（v42）
+#
+# 项目是纯 Python + 类型标注，没上 strict —— strict 会把存量几百处隐式 Any
+# 全翻出来，噪音淹没真问题。这里的规则集只做一件事：
+#   **把"运行时才会炸"的类型错误提前到 CI**。
+# 实测首次接入抓到 4 个真 bug（不存在的 self.db、多余的 .fetchall()、
+# ClassVar 被实例遮蔽、None 直接迭代），全部已修。
+# ---------------------------------------------------------------------------

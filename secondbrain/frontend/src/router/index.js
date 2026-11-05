@@ -12,6 +12,7 @@ import { createRouter, createWebHistory } from 'vue-router'
  *   状态   /status            任务流水线完整页（**非一级导航**，
  *                               从采集区/加工区的状态横条「全部 →」跳入）
  */
+/** @type {import('vue-router').RouteRecordRaw[]} */
 const routes = [
   {
     path: '/',

@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from app.core.db import get_db
@@ -180,7 +181,7 @@ class NoteTemplateService:
         name: str,
         body: str,
         description: str = "",
-        suggest_tags: list[str] | str | None = None,
+        suggest_tags: Sequence[str] | str | None = None,
         suggest_partition: str = "",
     ) -> dict[str, Any] | None:
         self.ensure_seeded()

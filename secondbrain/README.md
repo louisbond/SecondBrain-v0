@@ -45,11 +45,15 @@ cd frontend && npm run dev     # → http://localhost:5173（已代理 /api）
 ### 开发与测试
 
 ```bash
-# 一键跑全套检查（lint + 格式 + 单测 + 契约 + 构建 + E2E + 边界 + 渲染 + 走查 + 审计）
+# 一键跑全套检查（14 项：lint + 格式 + 类型 + 结构 + 单测 + 契约 + 构建
+#                  + E2E + 边界 + 渲染 + 走查 + 审计）
 python scripts/check.py
 
-# 只跑不需要服务的（快，秒级）
+# 只跑不需要服务的（9 项，秒级）
 python scripts/check.py --quick
+
+# CI 模式：同 --quick，只跑平台无关项（浏览器 E2E 需 Windows Edge + 本机服务）
+python scripts/check.py --ci
 
 # 列出所有检查项
 python scripts/check.py --list
@@ -63,6 +67,8 @@ python scripts/check.py --list
 | 后端 lint | `python -m ruff check .` | 规则配置在 `backend/pyproject.toml` |
 | 前端 lint | `npm run lint` | ESLint（flat config，`eslint.config.js`） |
 | 格式检查 | `npm run format:check` | Prettier（`.prettierrc.json`） |
+| 后端类型检查 | `python -m mypy app` | 配置 `backend/pyproject.toml` |
+| 前端类型检查 | `npm run typecheck` | `tsc --checkJs`，配置 `jsconfig.json` + `env.d.ts` |
 | 后端单测 | `pytest tests/test_secondbrain.py` | 领域逻辑 + 服务 + 迁移 |
 | 前后端契约 | `pytest tests/frontend_contract_test.py` | 接口形状与前端调用一致 |
 | 前端构建 | `npm run build` | 也会自动同步 Vditor 运行时资源 |
@@ -112,7 +118,41 @@ npm run format:check
   兜底，任何未捕获错误都会弹提示。
 - **用户数据绝不入库**：`.gitignore` 挡掉 `data/`、`logs/`、真实 config。
 
-### 前端结构（v41）
+### 类型检查（v42）
+
+```bash
+cd backend && python -m mypy app               # 或 python scripts/check.py --ci
+cd frontend && npm run typecheck              # tsc -p jsconfig.json --noEmit
+```
+
+- **后端 mypy**：配置在 `backend/pyproject.toml`。没上 `strict` ——
+  存量几百处隐式 Any 会把真问题淹掉；目标是**把运行时才会炸的类型错误提前到 CI**。
+  首次接入报 22 个错，其中 4 个是真 bug，已修：
+  `TemplateService` 用了根本不存在的 `self.db`（被 except 吞掉，表现为
+  「删掉的内置模板又自动回来」）、`db.query()` 已返回 list 却再调 `.fetchall()`、
+  `ClassVar` 经实例赋值被遮蔽导致健康缓存失效、`list | None` 参数直接迭代。
+- **前端 `checkJs`**：项目是 JS 不是 TS，用 `jsconfig.json` 开启 `checkJs`，
+  `env.d.ts` 声明 `*.vue` 模块、`@/` 别名与 `window.__sbToast`。
+  顺手把 `event.target.tagName` 改成 `instanceof Element` 收窄（真类型改进）。
+- **不开 `warn_unused_ignores`**：那批 `# type: ignore` 是给*没装库*的环境写的，
+  装了库或开了 `ignore_missing_imports` 就变"多余" —— 同一份代码在 CI 与本机
+  报不同的错。已在**全新 venv 最小依赖**与本机两种环境里验证都全绿。
+
+### 持续集成（v42）
+
+`.github/workflows/ci.yml`：push / PR / 手动触发，Ubuntu + Python 3.13 + Node 22，
+装 `backend/requirements-ci.txt` 与 `npm ci`，然后跑 `python scripts/check.py --ci`（9 项）。
+
+**为什么 CI 只跑 9 项**：另外 5 项（E2E / 边界 / 渲染 / 走查 / 控件审计）需要真实
+浏览器与本机 7688 服务，`cdp_client.py` 里的 Edge 路径也是 Windows 的 ——
+塞进 Linux runner 只会得到一个长期红的 workflow。这 5 项在本地 Windows
+用 `python scripts/check.py`（全套 14 项）跑。
+
+`requirements-ci.txt` 是跨平台最小集：去掉 `winotify`（Windows 专用）与
+faster-whisper / onnxruntime 等重型模型依赖 —— 它们都是**函数内惰性 import**，
+核心包、单测、类型检查都不需要。仓库目前没有 remote，推上去后即自动生效。
+
+### 前端结构（v41 + v42）
 
 两个曾经的巨石组件已拆开，**视图只做编排，逻辑与界面各自归位**：
 
@@ -122,6 +162,10 @@ views/manage/               6 个页签自治组件（最大 314 行），各自
 views/ProcessView.vue       72 行  只画加工队列条 + 空态
 views/process/              3 个核准子组件（ReviewCard / ParseSection / TaxonomySection）
 composables/useReview.js   471 行  核准页全部状态与业务逻辑（无模板）
+views/WorkbenchView.vue     93 行  采集区主壳（状态条 + 合并卡）
+views/workbench/            2 个段组件 + useWorkbench.js（369 行）
+views/SettingsView.vue      69 行  设置面板主壳（props + 分组）
+views/settings/             ai / storage / system 三组 + useSettings.js（280 行）
 ```
 
 - **设置页的 6 个页签是自治组件**：父组件不预加载全部数据，切到哪个才拉哪个；
@@ -129,9 +173,10 @@ composables/useReview.js   471 行  核准页全部状态与业务逻辑（无�
 - **核准页用注入上下文而不是 props**：`form` / `current` / 十几个 toggle 被
   三个区块共同读写，走 props 需要 20+ 个 v-model。`provideReview()` 创建上下文、
   子组件 `useReview()` 取用（漏了 provide 会直接报错，不会静默拿到 undefined）。
-- **单文件 ≤ 500 行**：由「前端结构」检查用棘轮锁住。`WorkbenchView.vue`(714) 与
-  `SettingsView.vue`(577) 是**下一轮待拆候选**，已锁住当前规模不许再长，
-  不是放过 —— 不让技术债继续扩大。
+- **单文件 ≤ 500 行**：v42 拆完最后两个超限文件（`WorkbenchView.vue` 714、
+  `SettingsView.vue` 577）后，例外名单已**清空**，全项目统一走 500 行上限
+  （当前最大 471 行）。四个页面主壳另锁 ≤160 行，防止逻辑慢慢搬回视图。
+  v41 曾用例外名单锁住候选文件不许再长 —— 那不是放过，是不让技术债扩大。
 - **契约测试按调用点找源码，不按文件路径**：`_read_containing("reviewApi.confirm(")`
   全量扫描 `src/`。以前写死 `views/ProcessView.vue`，逻辑一搬进 composable
   就 `ValueError: substring not found` —— 明明 payload 一个字没改，测试却假失败。

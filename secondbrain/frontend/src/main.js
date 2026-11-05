@@ -67,7 +67,8 @@ window.addEventListener('error', (event) => {
   }
   // 资源加载失败（img/script 404 之类）：这类错误没有 error 对象，
   // 静默失败最容易让人摸不着头脑，至少要提示一下。
-  if (event.target && event.target !== window && event.target.tagName) {
+  // EventTarget 不一定有 tagName；instanceof Element 同时完成类型收窄
+  if (event.target instanceof Element) {
     fallbackToast(`资源加载失败：${event.target.tagName}`, 'warn')
   }
 })

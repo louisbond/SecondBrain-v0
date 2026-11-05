@@ -487,13 +487,13 @@ class ReviewService:
                 "AND suggestion_type IN ('tag','partition')",
                 (f"item:{item_id}",),
             )
-            for name in tags:
+            for name in tags or []:
                 conn.execute(
                     "UPDATE ai_suggestions SET status = 'accepted' WHERE note_path = ? "
                     "AND suggestion_type IN ('tag','new_tag') AND suggestion_value = ?",
                     (f"item:{item_id}", name),
                 )
-            for name in partitions:
+            for name in partitions or []:
                 conn.execute(
                     "UPDATE ai_suggestions SET status = 'accepted' WHERE note_path = ? "
                     "AND suggestion_type = 'partition' AND suggestion_value = ?",

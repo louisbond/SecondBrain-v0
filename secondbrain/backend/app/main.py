@@ -16,7 +16,7 @@ import sys
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -53,7 +53,7 @@ def _find_frontend_dist() -> Any:
 class _CachedStaticFiles(StaticFiles):
     """给带 hash 的静态资源加长缓存（文件名变了就等于内容变了）。"""
 
-    def file_response(self, *args: Any, **kwargs: Any) -> FileResponse:
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
         resp = super().file_response(*args, **kwargs)
         resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return resp

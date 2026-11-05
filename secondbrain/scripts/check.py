@@ -46,6 +46,10 @@ CHECKS: list[Check] = [
     Check("后端 lint", [sys.executable, "-m", "ruff", "check", "."], BACKEND, timeout=180),
     Check("前端 lint", [NPX, "eslint", "src"], FRONTEND, timeout=300),
     Check("格式检查", [NPX, "prettier", "--check", "src"], FRONTEND, timeout=300),
+    # v42：类型检查。后端 mypy（配置在 backend/pyproject.toml），
+    #       前端 JS 用 tsc --checkJs（配置在 frontend/jsconfig.json + env.d.ts）
+    Check("后端类型检查", [sys.executable, "-m", "mypy", "app"], BACKEND, timeout=300),
+    Check("前端类型检查", [NPX, "tsc", "-p", "jsconfig.json", "--noEmit"], FRONTEND, timeout=300),
     # v41：防止组件又长回 900 行巨石（棘轮：新文件 ≤500，历史文件不许再长）
     Check("前端结构", [sys.executable, "-m", "pytest", "tests/frontend_structure_test.py", "-q"], BACKEND, timeout=120),
     # ---- 功能 ----
@@ -63,6 +67,7 @@ CHECKS: list[Check] = [
 QUICK_ONLY = {
     "后端 lint", "前端 lint", "格式检查",
     "后端单测", "前后端契约", "前端构建", "前端结构",
+    "后端类型检查", "前端类型检查",
 }
 
 
@@ -100,6 +105,10 @@ def run(check: Check) -> tuple[bool, str, float]:
         # ruff 没装是最常见的情况：给一句能直接抄的命令
         if "ruff" in check.name and "No module named" in str(exc):
             return False, "没装 ruff（pip install ruff）", time.time() - started
+        if "mypy" in check.name and "No module named" in str(exc):
+            return False, "没装 mypy（pip install mypy）", time.time() - started
+        if "mypy" in check.name and "No module named" in str(exc):
+            return False, "没装 mypy（pip install mypy）", time.time() - started
         return False, str(exc)[:200], time.time() - started
     cost = time.time() - started
     if proc.returncode == 0:
@@ -113,6 +122,11 @@ def run(check: Check) -> tuple[bool, str, float]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="SecondBrain 一键检查")
     ap.add_argument("--quick", action="store_true", help="只跑不需要服务的检查")
+    ap.add_argument(
+        "--ci",
+        action="store_true",
+        help="CI 模式：同 --quick，只跑平台无关项（浏览器 E2E 需 Windows Edge + 本机服务）",
+    )
     ap.add_argument("--list", action="store_true", help="列出检查项")
     args = ap.parse_args()
 
@@ -122,7 +136,8 @@ def main() -> int:
             print(f"  {c.name:12} {flag}")
         return 0
 
-    selected = [c for c in CHECKS if (not args.quick or c.name in QUICK_ONLY)]
+    quick = args.quick or args.ci
+    selected = [c for c in CHECKS if (not quick or c.name in QUICK_ONLY)]
 
     if any(c.needs_server for c in selected):
         if not server_alive():

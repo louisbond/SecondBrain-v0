@@ -1,0 +1,30 @@
+# SecondBrain v0.6.0 — CI / 开发最小依赖（v42）
+#
+# 与 requirements.txt（完整运行时依赖）的区别：
+#   · 不含 winotify（Windows 专用，Linux 装不上）
+#   · 不含 faster-whisper / onnxruntime / transformers / sentencepiece（重型模型依赖）
+#   · 不含 yt-dlp / trafilatura（采集链路的可选依赖）
+#
+# 这些都是**函数内惰性 import**：核心包、单测、契约测试都不需要它们。
+# 因此 CI 能在干净的 Linux runner 上跑完平台无关的检查，
+# 不必为了 lint / 类型检查下载几百 MB 的模型运行时。
+#
+# 本清单已在**全新 venv** 里验证过：mypy / ruff / 130 单测 / 契约 / 结构 全绿。
+# 唯一被跳过的是依赖 PyAV 的兼容补丁测试（pytest.importorskip("av")）。
+
+# --- 运行时核心（app 包导入所需）---
+fastapi>=0.110
+uvicorn[standard]>=0.27
+httpx>=0.26
+pydantic>=2.5
+python-multipart>=0.0.9
+jieba>=0.42.1
+
+# --- 测试 ---
+pytest>=8.0
+pytest-asyncio>=0.23
+websockets>=12          # tests/cdp_client.py（浏览器类检查；--ci 不跑但留着便于本地）
+
+# --- 代码质量工具 ---
+mypy>=1.10
+ruff>=0.6

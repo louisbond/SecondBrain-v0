@@ -155,7 +155,9 @@ class TestAudioCompat:
 
     def test_open_compat_accepts_metadata_errors(self):
         """打了补丁后 av.open 不再因 metadata_errors 报错。"""
-        import av
+        # av 是 faster-whisper 的可选依赖；CI 的最小依赖集里没装，
+        # 缺了就跳过而不是让整轮单测失败（本地装了 av 时照常验证）。
+        av = pytest.importorskip("av")
 
         from app.services.audio_compat import patch_av_open_compat
 
@@ -2603,3 +2605,43 @@ class TestMaturityBasics:
 
         src = inspect.getsource(workbench.diagnose)
         assert "collect_checks" in src, "diagnose 没走 diagnostics 模块"
+
+
+class TestTypeCheckRegressions:
+    """v42 首次接入 mypy 抓到、并已修复的真 bug —— 用测试锁住防回潮。
+
+    这两个 bug 的共同点：**异常被 except 吞掉**，所以界面上不报错，
+    只是行为悄悄不对。单测原先没覆盖到这两条路径，类型检查反而先发现。
+    """
+
+    def test_parse_template_deletion_memory_actually_persists(self):
+        """`_was_deleted` / `_remember_deleted` 原用了不存在的 self.db。
+
+        两个方法都把异常吞成 `False` / `pass`，于是用户删掉内置解析模板后，
+        下次 seed_defaults 又把它播回来 ——「删不掉」但没有任何报错。
+        """
+        from app.services.template_service import get_template_service
+
+        svc = get_template_service()
+        name = "v42-类型检查-删除记忆"
+        assert svc._was_deleted(name) is False
+        svc._remember_deleted(name)
+        assert svc._was_deleted(name) is True, (
+            "删除记忆没落库（修复前是 self.db 触发 AttributeError 被吞掉）"
+        )
+
+    def test_partition_delete_with_children_does_not_crash(self):
+        """`db.query()` 已经返回 list[Row]，原代码又调了 `.fetchall()`。
+
+        只有删**带子分区**的分区才会走到那行；修复前直接 AttributeError。
+        """
+        from app.services.partition_service import get_partition_service
+
+        svc = get_partition_service()
+        parent = svc.create("v42父分区")
+        child = svc.create("v42子分区", parent_id=parent["id"])
+        assert child["id"] != parent["id"]
+
+        svc.delete(parent["id"])  # 不该抛 AttributeError
+        assert svc.get(parent["id"]) is None
+        assert svc.get(child["id"]) is not None, "子分区应上移保留，不随父分区删除"

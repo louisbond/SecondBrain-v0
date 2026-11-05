@@ -1,0 +1,58 @@
+name: CI
+
+# SecondBrain 的持续集成（v42）。
+#
+# 设计取舍：CI 只跑**平台无关**的检查（`check.py --ci`，9 项）。
+# 另外 5 项（E2E / 边界 / 渲染 / 走查 / 控件审计）依赖真实 Chromium/Edge
+# 与本机 7688 服务，cdp_client.py 里的浏览器路径也是 Windows 的 ——
+# 把它们塞进 Linux runner 只会得到一个长期红的 workflow。
+# 那 5 项在本地 Windows 用 `python scripts/check.py`（全套 14 项）跑。
+#
+# 仓库目前没有 remote；把本仓库推到 GitHub / CNB 后，每次 push 与 PR
+# 会自动触发，无需额外配置。
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: 一键检查（平台无关项）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 准备 Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: secondbrain/backend/requirements-ci.txt
+
+      - name: 准备 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: secondbrain/frontend/package-lock.json
+
+      - name: 安装后端依赖（最小集）
+        run: pip install -r secondbrain/backend/requirements-ci.txt
+
+      - name: 安装前端依赖
+        working-directory: secondbrain/frontend
+        run: npm ci
+
+      # 9 项：后端 lint / 前端 lint / 格式 / 后端类型 / 前端类型 /
+      #       前端结构 / 后端单测 / 前后端契约 / 前端构建
+      # 失败项会打印命令输出明细，退出码非 0 直接让 job 变红。
+      - name: 一键检查
+        working-directory: secondbrain
+        run: python scripts/check.py --ci

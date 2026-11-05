@@ -219,7 +219,7 @@ class PartitionService:
             int(r["id"])
             for r in db.query(
                 "SELECT id FROM partitions WHERE parent_id = ?", (partition_id,)
-            ).fetchall()
+            )
         ]
         parent_id = current["parent_id"]
         parent = self.get(int(parent_id)) if parent_id else None

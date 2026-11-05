@@ -595,7 +595,8 @@ class AIService:
             payload = _extract_json_block(raw)
             if payload:
                 try:
-                    tid = int(payload.get("template_id"))
+                    raw_tid = payload.get("template_id")
+                    tid = int(raw_tid) if raw_tid is not None else -1
                 except (TypeError, ValueError):
                     tid = -1
                 match = next((t for t in templates if int(t["id"]) == tid), None)

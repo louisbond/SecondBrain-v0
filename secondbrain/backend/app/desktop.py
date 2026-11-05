@@ -175,10 +175,11 @@ def run_desktop(app: Any, host: str, port: int, data_dir: Path, open_browser: bo
         logger.info("窗口已关闭，退出程序")
         _shutdown()
 
-    try:
-        window.events.closed += _on_closed
-    except Exception:  # noqa: BLE001
-        pass
+    if window is not None:
+        try:
+            window.events.closed += _on_closed
+        except Exception:  # noqa: BLE001
+            pass
 
     try:
         webview.start()
