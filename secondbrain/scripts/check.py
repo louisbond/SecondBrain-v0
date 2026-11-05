@@ -127,6 +127,11 @@ def main() -> int:
         action="store_true",
         help="CI 模式：同 --quick，只跑平台无关项（浏览器 E2E 需 Windows Edge + 本机服务）",
     )
+    ap.add_argument(
+        "--e2e",
+        action="store_true",
+        help="只跑需要本机服务的浏览器检查（5 项），给 Windows self-hosted runner 用",
+    )
     ap.add_argument("--list", action="store_true", help="列出检查项")
     args = ap.parse_args()
 
@@ -137,7 +142,16 @@ def main() -> int:
         return 0
 
     quick = args.quick or args.ci
-    selected = [c for c in CHECKS if (not quick or c.name in QUICK_ONLY)]
+    if args.e2e:
+        # 与 CI 的 9 项互补：Linux CI 跑平台无关项，Windows runner 只补浏览器项，
+        # 不重复跑 lint / 类型 / 单测。
+        selected = [c for c in CHECKS if c.needs_server]
+        print("· E2E 模式（只跑需要本机服务的检查）")
+    elif quick:
+        selected = [c for c in CHECKS if c.name in QUICK_ONLY]
+        print("· 快速模式（跳过需要服务的检查）")
+    else:
+        selected = list(CHECKS)
 
     if any(c.needs_server for c in selected):
         if not server_alive():
@@ -146,8 +160,6 @@ def main() -> int:
             print("  开发态启动：cd secondbrain/backend && python run.py")
             return 2
         print(f"✓ 后端在线 {BASE_URL}")
-    else:
-        print("· 快速模式（跳过需要服务的检查）")
     print("=" * 60)
 
     results: list[tuple[str, bool, str, float]] = []

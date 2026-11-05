@@ -55,6 +55,9 @@ python scripts/check.py --quick
 # CI 模式：同 --quick，只跑平台无关项（浏览器 E2E 需 Windows Edge + 本机服务）
 python scripts/check.py --ci
 
+# 只跑需要本机服务的 5 项浏览器检查（Windows self-hosted runner 用）
+python scripts/check.py --e2e
+
 # 列出所有检查项
 python scripts/check.py --list
 ```
@@ -151,6 +154,31 @@ cd frontend && npm run typecheck              # tsc -p jsconfig.json --noEmit
 `requirements-ci.txt` 是跨平台最小集：去掉 `winotify`（Windows 专用）与
 faster-whisper / onnxruntime 等重型模型依赖 —— 它们都是**函数内惰性 import**，
 核心包、单测、类型检查都不需要。仓库目前没有 remote，推上去后即自动生效。
+
+#### 浏览器检查：Windows self-hosted runner
+
+`.github/workflows/e2e-windows.yml` 把 CI 跑不了的 5 项也自动化了：
+
+- 核心是 `python scripts/check.py --e2e` —— **只跑 5 项需要服务的检查**，
+  不重复 Linux CI 已经做过的 lint / 类型 / 单测。
+- 服务策略：若 `7688` 已有健康服务就复用（不启动也不关闭）；
+  否则在 `RUNNER_TEMP` 里生成临时 `config.toml` + vault + db，自包含启动
+  开发态 `run.py --no-browser`，并在 `finally` 里关掉 —— **不碰你的真实数据**。
+- 触发：Actions 页手动 `Run workflow`（`scope=full` 可改跑全套 14 项），
+  或 CI 成功后自动排队。`concurrency` 只保留最新一次，runner 离线不会堆积 job。
+
+**一次性准备**（在本机注册 runner，只需做一次）：
+
+1. 仓库 → Settings → Actions → Runners → **New self-hosted runner** → Windows x64
+2. 按页面给的命令下载并 `config.cmd`，标签保持默认 `self-hosted / Windows / X64`
+3. `run.cmd` 常驻（或装成 Windows 服务，避免每次手动开）
+4. 本机装 Edge —— `cdp_client.py` 找的是标准安装路径
+
+这个 workflow 的 PowerShell 脚本**刻意全用 ASCII**：Windows PowerShell 5.1 按 ANSI
+读 `.ps1`，中文字符串会乱码并破坏引号；启动进程用 .NET `Process` 而非
+`Start-Process`（PS 5.1 在环境里有 `Path`/`path` 重复键时会抛「已添加项」），
+并用 setup-python 提供的 `pythonLocation` 而不是 PATH 里的 `python`
+（开发机上常命中 Windows Store 别名）。整套起停流程已在本地模拟执行验证过。
 
 ### 前端结构（v41 + v42）
 

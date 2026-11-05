@@ -1,0 +1,171 @@
+name: E2E (Windows self-hosted)
+
+# 把 5 项**浏览器类检查**纳入自动化（v42 补充）。
+#
+# 为什么单独一个 workflow：
+#   ci.yml 跑在 ubuntu-latest，只能做平台无关的 9 项。
+#   E2E / 边界 / 渲染 / 走查 / 控件审计要真实 Edge + 本机 7688 服务，
+#   cdp_client.py 里的浏览器路径也是 Windows 的 —— 必须落在 Windows runner。
+#
+# 为什么用 self-hosted 而不是 GitHub 托管的 windows-latest：
+#   这些检查会连本机 vault 与数据库，属于「你这台机器上的这套环境」的验证；
+#   而且托管 runner 每次都是全新机器，装 Edge / 起服务 / 备数据成本高且不稳定。
+#
+# 触发策略：手动为主；CI 成功时也自动排队一次。
+#   self-hosted runner 不保证常在线，所以加了 concurrency 只保留最新一次，
+#   避免离线期间堆积一堆排队 job。不需要自动触发就把 workflow_run 那块删掉。
+#
+# 注意：下方 PowerShell 脚本**刻意全用 ASCII**。
+#   Windows PowerShell 5.1 按 ANSI 读取 .ps1，中文字符串会乱码并破坏引号，
+#   实测直接导致 "Try 语句缺少 Catch 或 Finally 块" 一类的解析错误。
+#
+# 前置条件（见 README「持续集成」）：
+#   1. 本机注册 GitHub Actions self-hosted runner，带标签 self-hosted / Windows / X64
+#   2. 本机装了 Edge（cdp_client.py 会找标准安装路径）
+#   3. Python 3.13、Node 22（本 workflow 也会用 setup action 准备）
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: 'e2e = only the 5 browser checks; full = all 14 checks'
+        required: false
+        default: 'e2e'
+        type: choice
+        options:
+          - e2e
+          - full
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+concurrency:
+  group: e2e-windows
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+
+    env:
+      SCOPE: ${{ inputs.scope || 'e2e' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # workflow_run 触发时检出触发 CI 的那个 commit，而不是默认分支
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install backend deps
+        run: pip install -r secondbrain/backend/requirements-ci.txt
+
+      - name: Install frontend deps
+        working-directory: secondbrain/frontend
+        run: npm ci
+
+      - name: Build frontend (run.py mounts dist)
+        working-directory: secondbrain/frontend
+        run: npm run build
+
+      - name: Start server, run browser checks, cleanup
+        shell: powershell
+        working-directory: secondbrain
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'sb-e2e'
+          $health = 'http://127.0.0.1:7688/api/health'
+          $started = $false
+          $proc = $null
+          # setup-python sets pythonLocation; do not rely on PATH order
+          # (Windows Store python.exe alias is a common trap on dev machines).
+          $pythonExe = Join-Path $env:pythonLocation 'python.exe'
+          if (-not (Test-Path $pythonExe)) { $pythonExe = (Get-Command python).Source }
+
+          function Test-Service {
+            try {
+              $r = Invoke-WebRequest -Uri $health -TimeoutSec 3 -UseBasicParsing
+              return ($r.StatusCode -eq 200)
+            } catch { return $false }
+          }
+
+          try {
+            if (Test-Service) {
+              Write-Output 'Reusing existing service on 7688 (will not stop it)'
+            } else {
+              # Self-contained: vault / db under runner temp, no user data touched.
+              New-Item -ItemType Directory -Force -Path $root, (Join-Path $root 'vault'), (Join-Path $root 'data') | Out-Null
+              $posix = $root -replace '\\', '/'
+              # Here-string terminator must be alone on its line.
+              # PS 5.1 -Encoding UTF8 writes a BOM (tomllib rejects it) -> write BOM-less.
+              $cfg = @"
+          [vault]
+          path = "$posix/vault"
+
+          [storage]
+          data_dir = "$posix/data"
+
+          [web]
+          host = "127.0.0.1"
+          port = 7688
+          "@
+              $cfgPath = Join-Path $root 'config.toml'
+              [System.IO.File]::WriteAllText($cfgPath, $cfg, (New-Object System.Text.UTF8Encoding($false)))
+              $env:SECOND_BRAIN_CONFIG = $cfgPath
+
+              # Dev-mode run.py does not open a browser (only frozen / --open-browser does).
+              # Use .NET Process instead of Start-Process: PS 5.1 throws
+              # "An item with the same key has already been added" when the
+              # environment has both Path and path (common on self-hosted runners).
+              # stdout/stderr are inherited, so logs land in the step output.
+              $psi = New-Object System.Diagnostics.ProcessStartInfo
+              $psi.FileName = $pythonExe
+              $psi.Arguments = 'run.py --no-browser'
+              $psi.WorkingDirectory = (Join-Path (Get-Location) 'backend')
+              $psi.UseShellExecute = $false
+              $psi.CreateNoWindow = $true
+              $proc = New-Object System.Diagnostics.Process
+              $proc.StartInfo = $psi
+              $proc.Start() | Out-Null
+              $started = $true
+              Write-Output "Started dev server pid=$($proc.Id)"
+
+              $ready = $false
+              for ($i = 0; $i -lt 60; $i++) {
+                Start-Sleep -Seconds 2
+                if (Test-Service) { $ready = $true; break }
+                if ($proc.HasExited) { throw "Server exited early (pid=$($proc.Id)), see logs" }
+              }
+              if (-not $ready) { throw 'Server not ready within 120s' }
+              Write-Output 'Server ready'
+            }
+
+            if ($env:SCOPE -eq 'full') {
+              & $pythonExe scripts/check.py
+            } else {
+              # Only the 5 checks CI cannot do; no duplicate lint / types / unit.
+              & $pythonExe scripts/check.py --e2e
+            }
+            if ($LASTEXITCODE -ne 0) { throw "Checks failed (exit $LASTEXITCODE)" }
+          }
+          finally {
+            if ($started -and $proc -and (-not $proc.HasExited)) {
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+              Write-Output "Stopped CI server pid=$($proc.Id)"
+            }
+          }
