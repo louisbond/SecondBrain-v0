@@ -1,4 +1,4 @@
-# SecondBrain v0.6.0 — Backend dependencies
+# SecondBrain v0.7.0 — Backend dependencies
 # P0 核心
 fastapi>=0.110
 uvicorn[standard]>=0.27

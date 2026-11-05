@@ -101,6 +101,13 @@ except Exception as _exc:  # noqa: BLE001
 # jieba 词典：由 pyinstaller-hooks-contrib 的 jieba hook 自动收集。
 # 不要在这里手动加 —— 会和 hook 的目标路径冲突（目录/文件同名导致 COLLECT 失败）。
 
+# 公开分发防御：真实配置、密钥、数据库、日志绝不能被打进包。
+# datas 是显式清单，这里再兜一层，防止后来有人误加整个 config/ 目录。
+_FORBIDDEN_NAMES = {"config.toml", "secrets.json", "secondbrain.db", "app.log"}
+for _src, _dst in datas:
+    if Path(_src).name.lower() in _FORBIDDEN_NAMES:
+        raise RuntimeError(f"[spec] 打包清单混入用户数据：{_src}")
+
 a = Analysis(
     [str(BACKEND_DIR / "run.py")],
     pathex=[str(BACKEND_DIR)],

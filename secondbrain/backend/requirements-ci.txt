@@ -1,4 +1,4 @@
-# SecondBrain v0.6.0 — CI / 开发最小依赖（v42）
+# SecondBrain v0.7.0 — CI / 开发最小依赖（v42）
 #
 # 与 requirements.txt（完整运行时依赖）的区别：
 #   · 不含 winotify（Windows 专用，Linux 装不上）

@@ -1,4 +1,6 @@
-# SecondBrain v0.6.0
+# SecondBrain v0.7.0
+
+> **直接使用程序**请看 [用户使用说明](docs/USER_GUIDE.md)；本文件面向开发者。
 
 > 自用优先的个人知识库：**采集 → 提炼 → 创作 → 运维**
 > 桌面常驻服务 + 本机浏览器 UI，不上外网。
@@ -594,3 +596,35 @@ CLI 登录（读 keychain）、开机自启注册都能正常工作。
 | AI 主链 | 需 CLI 交互式登录一次；**若服务跑在受限环境（沙箱）里，CLI 读不到认证文件会表现为"未登录"**——让服务在沙箱外启动即可；或改用设置页的 OpenAI 兼容端点 |
 | 移动端 | 已砍（桌面端工具） |
 | 托盘图标 | 未实现（可直接关浏览器 / `POST /api/shutdown`） |
+
+## 分发与隐私（v43）
+
+面向「把 exe 发给别人、各用各的本地数据、公开仓库」这个场景。
+
+- **零配置启动**：配置模板 `config/config.example.toml` 里所有路径都留空，
+  首次运行自动播种到用户目录 `~/.secondbrain/config.toml`。
+  默认的 vault、数据库、日志、缓存都在 `~/.secondbrain/` 下，
+  与 exe 装在哪无关（`C:/Program Files` 这类只读位置也能跑）。
+- **升级不丢配置**：若 exe 同级 `config/config.toml` 已存在（老部署），
+  仍优先读它；`active_config_path()` / `active_secret_path()` 保证
+  「写入」和「读取」始终落在同一份文件上。
+- **干净机器回归测试**：`TestFreshInstall`（在 `tests/test_secondbrain.py` 里）
+  用临时 HOME + 临时安装目录模拟别人第一次双击，断言目录可写、
+  播种的模板不含本机路径或密钥、老部署配置仍优先。
+- **打包防御**：`secondbrain.spec` 在 `Analysis()` 前检查 datas，
+  一旦混入 `config.toml` / `secrets.json` / `secondbrain.db` / `app.log` 直接报错。
+- **数据不上云**：笔记、原文、密钥只在本机；对外网络请求仅来自用户主动的
+  抓取、AI 端点调用和模型下载。详见用户说明的「隐私说明」。
+
+```bash
+# 打包（产物：dist/SecondBrain/SecondBrain.exe）
+cd backend && pyinstaller secondbrain.spec --noconfirm
+
+# 发布前本地验证
+python scripts/check.py            # 全套 14 项
+```
+
+**已知限制**（第二轮再补）：没有安装包 / 卸载器，没有代码签名
+（SmartScreen 会拦，用户说明里写了处理办法），没有自动更新通道。
+
+许可：[MIT](../LICENSE) · [第三方组件声明](../THIRD_PARTY_NOTICES.md)

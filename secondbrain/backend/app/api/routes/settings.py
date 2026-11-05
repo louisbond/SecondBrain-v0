@@ -60,13 +60,19 @@ async def get_ai_key() -> dict[str, Any]:
 @router.post("/ai-key")
 async def set_ai_key(req: AIKeyRequest) -> dict[str, Any]:
     """保存 OpenAI 兼容链的密钥与端点（密钥写 secrets.json，不进 config.toml）。"""
-    from app.core.config import PROJECT_ROOT, mask_secret, save_secret, set_toml_value
+    from app.core.config import (
+        active_config_path,
+        active_secret_path,
+        mask_secret,
+        save_secret,
+        set_toml_value,
+    )
 
     cfg = get_config()
-    toml_path = PROJECT_ROOT / "config" / "config.toml"
+    toml_path = active_config_path()
 
     if req.clear:
-        secret_path = PROJECT_ROOT / "config" / "secrets.json"
+        secret_path = active_secret_path()
         if secret_path.exists():
             try:
                 data = json.loads(secret_path.read_text(encoding="utf-8"))
@@ -184,9 +190,9 @@ async def switch_provider(req: ProviderRequest) -> dict[str, Any]:
     if req.provider not in ("ollama", "openai_compat"):
         raise HTTPException(status_code=400, detail="未知 provider")
 
-    from app.core.config import PROJECT_ROOT, set_toml_value
+    from app.core.config import active_config_path, set_toml_value
 
-    set_toml_value(PROJECT_ROOT / "config" / "config.toml", "ai", "provider", req.provider)
+    set_toml_value(active_config_path(), "ai", "provider", req.provider)
     get_router().switch(req.provider, manual=True)
     store.set_runtime(provider=req.provider)
     return {"ok": True, "provider": req.provider, "persisted": True}

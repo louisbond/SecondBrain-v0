@@ -278,7 +278,10 @@ def stage_8_settings():
 
 def stage_9_data_integrity():
     print("\n── 阶段 9：数据完整性 ──")
-    vault = Path("<workspace>/Systems666/ChaoNaoKu")
+    # vault 路径从服务读，别写死某台机器的绝对路径（仓库要公开分发）
+    code, s = api("GET", "/api/settings")
+    vault_path = (s.get("vault") or {}).get("path") if isinstance(s, dict) else None
+    vault = Path(vault_path) if vault_path else Path.home() / ".secondbrain" / "vault"
     mds = [p for p in vault.rglob("*.md") if ".obsidian" not in str(p)]
     # 15 = 11 篇笔记 + 4 个视频 A 层原文；周报（_reports/）是调度器正常产物，不计入。
     # 用下限断言（用户会继续加工，笔记数只增不减）

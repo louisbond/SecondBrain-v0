@@ -48,7 +48,11 @@ permissions:
 
 jobs:
   e2e:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # 手动触发永远可跑；CI 成功自动触发仅在主仓库设置了变量时生效，
+    # 否则别人 fork 出去会因为没有 self-hosted runner 而一直排队超时。
+    if: >-
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+      && (github.event_name == 'workflow_dispatch' || vars.ENABLE_SELF_HOSTED_E2E == 'true')
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 20
 

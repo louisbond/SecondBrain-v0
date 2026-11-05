@@ -2645,3 +2645,108 @@ class TestTypeCheckRegressions:
         svc.delete(parent["id"])  # 不该抛 AttributeError
         assert svc.get(parent["id"]) is None
         assert svc.get(child["id"]) is not None, "子分区应上移保留，不随父分区删除"
+
+
+class TestFreshInstall:
+    """v43：全新机器 / 零配置启动 —— 发 exe 给别人用的关键回归。
+
+    以前默认 vault / data / db 全指向 PROJECT_ROOT（打包态 = exe 同级），
+    装到 `C:/Program Files` 这类只读位置会直接失败；而且 config 模板里
+    写死过开发机的绝对路径，别人打开就是一个不存在的笔记库。
+
+    这里用独立的 ConfigStore 实例 + 临时 HOME 模拟"别人第一次双击"，
+    不触碰全局单例，也不污染真实数据。
+    """
+
+    @staticmethod
+    def _isolate(tmp_path, monkeypatch):
+        """模拟「别人第一次双击」：干净的安装目录 + 空的 HOME。
+
+        必须连 PROJECT_ROOT 一起换掉 —— 开发机上 config/config.toml
+        是真实存在的（含本机 vault 绝对路径），不换就会被当成已有部署。
+        """
+        import shutil
+
+        import app.core.config as cfg_mod
+
+        home = tmp_path / "home"
+        program = tmp_path / "program"
+        (program / "config").mkdir(parents=True, exist_ok=True)
+        # 打包版模板在 _MEIPASS/config/，开发版在 PROJECT_ROOT/config/
+        shutil.copyfile(
+            cfg_mod.PROJECT_ROOT / "config" / "config.example.toml",
+            program / "config" / "config.example.toml",
+        )
+        monkeypatch.setenv("SECOND_BRAIN_HOME", str(home))
+        for key in ("SECOND_BRAIN_CONFIG", "SECOND_BRAIN_VAULT", "SECOND_BRAIN_DB"):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.setattr(cfg_mod, "PROJECT_ROOT", program)
+        return cfg_mod, home, cfg_mod.ConfigStore(), program
+
+    def test_zero_config_uses_user_writable_dirs(self, tmp_path, monkeypatch):
+        import sqlite3
+
+        _cfg_mod, home, store, _program = self._isolate(tmp_path, monkeypatch)
+        cfg = store.get()
+
+        assert cfg.user_dir == home
+        assert cfg.vault.path == home / "vault"
+        assert cfg.data_dir == home / "data"
+        assert cfg.db_path == home / "data" / "secondbrain.db"
+
+        # 全部落在用户目录，不依赖 exe 装在哪
+        for p in (cfg.vault.path, cfg.data_dir, cfg.db_path):
+            assert home in p.parents
+
+        # 真的可写：建目录树、写文件、开 SQLite
+        cfg.vault.ensure()
+        assert (cfg.vault.path / "01_Inbox").is_dir()
+        (cfg.data_dir / "probe.txt").write_text("ok", encoding="utf-8")
+        assert (cfg.data_dir / "probe.txt").read_text(encoding="utf-8") == "ok"
+        with sqlite3.connect(cfg.db_path) as conn:
+            conn.execute("CREATE TABLE probe (x INTEGER)")
+        assert cfg.db_path.exists()
+
+    def test_seeded_config_has_no_machine_paths_or_secrets(self, tmp_path, monkeypatch):
+        import json
+        import re
+
+        cfg_mod, home, store, _program = self._isolate(tmp_path, monkeypatch)
+        store.get()
+
+        target = cfg_mod.active_config_path()
+        assert target == home / "config.toml"
+        assert target.exists(), "首次运行应自动播种 config.toml"
+
+        text = target.read_text(encoding="utf-8")
+        assert 'path = ""' in text, "模板里仍写死了笔记库路径"
+        assert 'data_dir = ""' in text
+        assert "AllDocument666" not in text
+        assert not re.search(r'(?i)^\s*(api_key|token|password)\s*=\s*"[^"]+"', text, re.M)
+
+        # 密钥写回与读取必须落到同一份文件（以前写 exe 同级、读用户目录）
+        secret_path = cfg_mod.save_secret("probe_key", "abc")
+        assert home in secret_path.parents
+        assert json.loads(secret_path.read_text(encoding="utf-8"))["probe_key"] == "abc"
+        assert cfg_mod.active_secret_path() == secret_path
+
+    def test_legacy_data_dir_is_preserved(self, tmp_path, monkeypatch):
+        """v0.7 升级回归：exe 同级已有库时必须继续用，不能连到新空库。"""
+        cfg_mod, _home, _store, program = self._isolate(tmp_path, monkeypatch)
+        legacy_data = program / "data"
+        legacy_data.mkdir(parents=True)
+        (legacy_data / "secondbrain.db").write_bytes(b"legacy")
+
+        cfg = cfg_mod.ConfigStore().get()
+        assert cfg.data_dir == legacy_data
+        assert cfg.db_path == legacy_data / "secondbrain.db"
+
+    def test_existing_deployment_config_still_wins(self, tmp_path, monkeypatch):
+        """升级兼容：exe 同级已有 config.toml 时继续优先读它，不丢配置。"""
+        cfg_mod, _home, _store, program = self._isolate(tmp_path, monkeypatch)
+        legacy = program / "config" / "config.toml"
+        legacy.write_text('[web]\nport = 7699\n', encoding="utf-8")
+
+        cfg = cfg_mod.ConfigStore().get()
+        assert cfg_mod.active_config_path() == legacy
+        assert cfg.web.port == 7699

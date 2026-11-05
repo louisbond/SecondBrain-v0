@@ -27,6 +27,8 @@ BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from app.core.config import APP_VERSION  # noqa: E402 — 必须先补 sys.path 才能 import app
+
 
 def _frontend_dist() -> Path | None:
     """定位前端构建产物（打包后位于 _MEIPASS/frontend/dist）。"""
@@ -88,7 +90,7 @@ def _p(*args: Any) -> None:
 def main() -> None:
     _fix_windows_console_encoding()
 
-    parser = argparse.ArgumentParser(description="SecondBrain v0.5.0")
+    parser = argparse.ArgumentParser(description=f"SecondBrain v{APP_VERSION}")
     parser.add_argument("--host", default=None, help="监听地址")
     parser.add_argument("--port", type=int, default=None, help="监听端口")
     parser.add_argument("--no-frontend", action="store_true", help="只启动 API")
@@ -116,7 +118,7 @@ def main() -> None:
         if _log_path:
             _p(f"[SecondBrain] 日志：{_log_path}")
         # 立刻落一条，保证文件非空（哪怕后面启动失败也有线索）
-        _log.info("SecondBrain 启动中… 版本 0.5.0")
+        _log.info(f"SecondBrain 启动中… 版本 {APP_VERSION}")
     except Exception as _exc:  # noqa: BLE001
         _p(f"[SecondBrain] 日志初始化失败：{_exc}")
     if args.port:
@@ -142,7 +144,7 @@ def main() -> None:
     if port != cfg.web.port:
         _p(f"[SecondBrain] 端口 {cfg.web.port} 被占用，已顺延到 {port}")
 
-    _p(f"[SecondBrain] v0.5.0 → http://{host}:{port}")
+    _p(f"[SecondBrain] v{APP_VERSION} → http://{host}:{port}")
     _p(f"[SecondBrain] vault: {cfg.vault.path}")
 
     # 打包后双击即用：内嵌窗口（桌面模式），关窗即退

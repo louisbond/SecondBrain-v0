@@ -31,3 +31,12 @@ _edge_ux/
 
 # 本地临时脚本
 secondbrain/scripts/_*.py
+
+# v43：公开仓库只保留用户/开发者文档与代码；开发过程笔记留在本地，不入库
+# （注意：只是移出 git 索引，本地文件夹不要删）
+.workbuddy/
+HANDOVER.md
+START-HERE.md
+
+# PyInstaller 构建缓存（含 --clean 时用的临时 workpath）
+secondbrain/build*/

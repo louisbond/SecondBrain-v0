@@ -30,7 +30,7 @@ APP_NAME = "SecondBrain"
 # 而这里的 APP_VERSION 根本没人用 —— 于是侧边栏显示的版本号
 # 和真实进度永远对不上（都写到 v38 了还写着 0.5.0）。
 # 现在：改这一行，后端接口 / 前端显示 / 打包元数据一起变。
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.7.0"
 
 
 def _detect_project_root() -> Path:
@@ -80,11 +80,88 @@ def _resolve_bin_dir(toml_data: dict[str, Any]) -> Path:
     return PROJECT_ROOT / "bin"
 
 
+def _resolve_prompts_dir(toml_data: dict[str, Any]) -> Path:
+    """提示词模板目录（与 bin 同理：打包态在 _MEIPASS 内）。"""
+    explicit = _get(toml_data, "storage.prompts_dir", "")
+    if explicit:
+        p = Path(str(explicit)).expanduser()
+        return p if p.is_absolute() else (PROJECT_ROOT / p).resolve()
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        packaged = Path(meipass) / "prompts"
+        if packaged.is_dir():
+            return packaged
+    return PROJECT_ROOT / "prompts"
+
+
 def _default_user_dir() -> Path:
     override = os.environ.get("SECOND_BRAIN_HOME")
     if override:
         return Path(override).expanduser()
     return Path.home() / ".secondbrain"
+
+
+def _candidate_toml_paths() -> list[Path]:
+    """配置文件候选（按优先级）：env > exe 同级 > 用户目录。"""
+    candidates = [
+        PROJECT_ROOT / "config" / "config.toml",
+        _default_user_dir() / "config.toml",
+    ]
+    env_path = os.environ.get("SECOND_BRAIN_CONFIG")
+    if env_path:
+        candidates.insert(0, Path(env_path).expanduser())
+    return candidates
+
+
+def _candidate_secret_paths() -> list[Path]:
+    return [
+        PROJECT_ROOT / "config" / "secrets.json",
+        _default_user_dir() / "secrets.json",
+    ]
+
+
+def active_config_path() -> Path:
+    """当前生效（或首次运行应当创建）的 config.toml。
+
+    兼容策略：已有部署的配置在 exe 同级，继续优先读它，升级不丢配置；
+    全新安装（可能装在 Program Files，不可写）一律落用户目录。
+    """
+    env_path = os.environ.get("SECOND_BRAIN_CONFIG")
+    if env_path:
+        return Path(env_path).expanduser()
+    for p in _candidate_toml_paths():
+        if p.exists():
+            return p
+    return _default_user_dir() / "config.toml"
+
+
+def active_secret_path() -> Path:
+    """密钥文件同理；写回必须用这个路径，否则会出现「保存了却读不到」。"""
+    for p in _candidate_secret_paths():
+        if p.exists():
+            return p
+    return _default_user_dir() / "secrets.json"
+
+
+def _default_data_dir() -> Path:
+    """数据目录默认值：兼容老部署 + 新安装可移植。
+
+    老部署的 config.toml 里 `data_dir = ""`，靠默认值把数据放在 exe 同级
+    data/。若把默认值直接改成用户目录，升级后服务会连到一个新建的空库，
+    表现为「笔记全不见了」。只要老库还在就继续用它。
+    """
+    legacy = PROJECT_ROOT / "data"
+    if (legacy / "secondbrain.db").exists():
+        return legacy
+    return _default_user_dir() / "data"
+
+
+def _default_vault_dir() -> Path:
+    """同上：老部署若已有默认库，保留；全新安装才用用户目录。"""
+    legacy = PROJECT_ROOT / "data" / "vault"
+    if legacy.is_dir():
+        return legacy
+    return _default_user_dir() / "vault"
 
 
 @dataclass
@@ -166,7 +243,9 @@ class ASRConfig:
     model_size: str = "small"
     compute: str = "int8"
     concurrency: int = 1
-    cache_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "cache" / "audio")
+    cache_dir: Path = field(
+        default_factory=lambda: _default_user_dir() / "data" / "cache" / "audio"
+    )
     # 本地模型目录：设置后优先从该目录加载（离线可用）。
     # 留空则从 HuggingFace Hub 下载（首次运行自动缓存）。
     model_dir: Path | None = None
@@ -362,7 +441,7 @@ def set_toml_value(path: Path, section: str, key: str, value: str) -> bool:
 
 def save_secret(name: str, value: str) -> Path:
     """把密钥写入 secrets.json（与 config.toml 分开，避免误提交）。"""
-    target = PROJECT_ROOT / "config" / "secrets.json"
+    target = active_secret_path()
     data: dict[str, Any] = {}
     if target.exists():
         try:
@@ -399,30 +478,21 @@ class ConfigStore:
 
     # -- 路径定位 ---------------------------------------------------------
     def _candidate_toml_paths(self) -> list[Path]:
-        candidates = [
-            PROJECT_ROOT / "config" / "config.toml",
-            _default_user_dir() / "config.toml",
-        ]
-        env_path = os.environ.get("SECOND_BRAIN_CONFIG")
-        if env_path:
-            candidates.insert(0, Path(env_path))
-        return candidates
+        return _candidate_toml_paths()
 
     def _candidate_secret_paths(self) -> list[Path]:
-        return [
-            PROJECT_ROOT / "config" / "secrets.json",
-            _default_user_dir() / "secrets.json",
-        ]
+        return _candidate_secret_paths()
 
     def _seed_config(self) -> None:
-        """首次运行：把包内模板复制到 exe 同级 config/config.toml。
+        """首次运行：把包内模板播种到用户可写目录。
 
-        用户随后可以直接改这个文件；已经存在时不会覆盖。
+        以前写 exe 同级 config/，装到 Program Files 会直接失败。
+        只有所有候选路径都不存在时才会调用，因此不会覆盖已有部署。
         """
         template = _bundled_config_template()
         if template is None:
             return
-        target = PROJECT_ROOT / "config" / "config.toml"
+        target = active_config_path()
         if target.exists():
             return
         try:
@@ -466,7 +536,7 @@ class ConfigStore:
         user_dir.mkdir(parents=True, exist_ok=True)
 
         vault_path = Path(
-            _get(toml_data, "vault.path", str(PROJECT_ROOT / "data" / "vault"))
+            _get(toml_data, "vault.path", str(_default_vault_dir()))
         ).expanduser()
         env_vault = os.environ.get("SECOND_BRAIN_VAULT")
         if env_vault:
@@ -485,7 +555,7 @@ class ConfigStore:
         )
 
         data_dir = Path(
-            _get(toml_data, "storage.data_dir", str(PROJECT_ROOT / "data"))
+            _get(toml_data, "storage.data_dir", str(_default_data_dir()))
         ).expanduser()
         if not data_dir.is_absolute():
             data_dir = (PROJECT_ROOT / data_dir).resolve()
@@ -636,9 +706,7 @@ class ConfigStore:
             db_path=db_path,
             cache_dir=data_dir / "cache",
             bin_dir=_resolve_bin_dir(toml_data),
-            prompts_dir=Path(
-                _get(toml_data, "storage.prompts_dir", str(PROJECT_ROOT / "prompts"))
-            ),
+            prompts_dir=_resolve_prompts_dir(toml_data),
             user_dir=user_dir,
         )
         return cfg

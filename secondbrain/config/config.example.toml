@@ -1,13 +1,19 @@
-# SecondBrain 配置模板（打包版首次运行会自动复制为 config.toml）
+# SecondBrain 配置模板（首次运行会自动复制为 config.toml）
 #
-# 路径说明：
-# - 相对路径都相对「程序所在目录」（exe 同级）；
-# - 绝对路径直接使用；
-# - 留空或删除某个键 = 用程序默认值。
+# 路径规则：
+# - **留空 = 用程序默认值（推荐）**。默认配置、数据库、日志、缓存和
+#   默认笔记库都放在用户目录 ~/.secondbrain/，与 exe 装在哪无关，
+#   因此装在 C:\Program Files 这类只读位置也能正常运行。
+# - 绝对路径直接使用（例如把笔记库指向你自己的 Obsidian 库）。
+# - 相对路径相对程序所在目录。
+#
+# 首次使用：打开「设置 → 采集与存储 → Vault 目录」选你的 Obsidian 库；
+# 不选也能用，程序会在用户目录里建一个默认库。
+# API Key 不写在这里，通过「设置 → AI 与密钥」保存到 secrets.json。
 
 [vault]
-# 你的 Obsidian 库根目录（绝对路径）
-path = "<workspace>/Systems666/ChaoNaoKu"
+# 留空 = ~/.secondbrain/vault（程序自动创建）
+path = ""
 inbox_dir = "01_Inbox"
 processed_dir = "02_Processed"
 notes_dir = "03_Notes"
@@ -16,11 +22,12 @@ archive_dir = "99_Archive"
 reports_dir = "_reports"
 
 [storage]
-# 留空 = 用程序同级目录下的 data/（推荐）
+# 留空 = ~/.secondbrain/data
 data_dir = ""
 db_path = ""
-# 内嵌二进制目录（yt-dlp 等），留空 = 程序同级 bin/
+# 留空 = 程序内置 bin/（打包版随 exe 提供 yt-dlp / ffmpeg）
 bin_dir = ""
+prompts_dir = ""
 
 [web]
 host = "127.0.0.1"
@@ -41,7 +48,7 @@ model = "qwen2.5:7b-instruct"
 timeout = 300
 
 [ai.openai_compat]
-# 火山方舟等 OpenAI 兼容端点；API Key 写在 config/secrets.json 的 ark_api_key
+# 火山方舟等 OpenAI 兼容端点；API Key 写在 secrets.json 的 ark_api_key
 base_url = "https://ark.cn-beijing.volces.com/api/v3"
 model = "doubao-seed-1-6-flash-250828"
 timeout = 180
