@@ -144,6 +144,7 @@ async def get_settings() -> dict[str, Any]:
         "ai": {
             "provider": cfg.ai.provider,
             "auto_fallback": cfg.ai.auto_fallback,
+            "auto_start_ollama": cfg.ai.auto_start_ollama,
             "fallback_threshold": cfg.ai.fallback_threshold,
             "embedding_model": cfg.ai.embedding.model,
             "embedding_backend": get_embedding_service().backend,
@@ -210,6 +211,13 @@ async def reset_provider() -> dict[str, Any]:
 async def set_auto_fallback(req: AutoFallbackRequest) -> dict[str, Any]:
     store.set_runtime(auto_fallback=req.enabled)
     return {"ok": True, "auto_fallback": req.enabled}
+
+
+@router.post("/auto-start-ollama")
+async def set_auto_start_ollama(req: AutoFallbackRequest) -> dict[str, Any]:
+    """切到 ollama / 启动时是否自动拉起本机 ollama 进程。"""
+    store.set_runtime(auto_start_ollama=req.enabled)
+    return {"ok": True, "auto_start_ollama": req.enabled}
 
 
 @router.post("/lan")

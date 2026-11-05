@@ -256,6 +256,18 @@ class ProviderRouter:
             self._fallback_active = False
             self._failure_streak = 0
             self._last_error = ""
+        if name == "ollama":
+            # 切到本地模型时才拉起进程：主链是云端，拉起来纯属浪费内存
+            self._ensure_local_model()
+
+    def _ensure_local_model(self) -> None:
+        """切到 ollama 时确保本机服务在跑（后台线程，不阻塞当前请求）。"""
+        cfg = self._sync_cfg()
+        if not cfg.ai.auto_start_ollama:
+            return
+        from app.services.ollama_service import ensure_running_async
+
+        ensure_running_async(cfg.ai.ollama.base_url)
 
     def _trigger_fallback(self, reason: str) -> None:
         """触发自动降级到 ollama。"""
@@ -337,6 +349,21 @@ class ProviderRouter:
     _health_cache_at: ClassVar[float] = 0.0
     HEALTH_TTL: ClassVar[float] = 60.0
 
+    def _rescue_ollama(self, provider: Provider, health: ProviderHealth) -> ProviderHealth:
+        """ollama 探测失败时尝试拉起，成功则重新探测一次。
+
+        拉起动作本身有 60 秒冷却（在 ollama_service 里），
+        所以设置页反复刷新不会反复 fork 进程。
+        """
+        cfg = self._sync_cfg()
+        if not cfg.ai.auto_start_ollama:
+            return health
+        from app.services.ollama_service import ensure_running
+
+        if ensure_running(cfg.ai.ollama.base_url, wait=6.0):
+            return provider.health()
+        return health
+
     def health(self, force: bool = False) -> dict[str, Any]:
         """所有 provider 的健康状态（设置页展示）。
 
@@ -357,6 +384,9 @@ class ProviderRouter:
             if provider is None:
                 continue
             h = provider.health()
+            if name == "ollama" and not h.ok:
+                # 探测失败最常见的原因是没启动，而不是模型或地址不对
+                h = self._rescue_ollama(provider, h)
             out.append(
                 {
                     "name": name,

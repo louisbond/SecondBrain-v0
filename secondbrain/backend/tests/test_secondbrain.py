@@ -2753,3 +2753,119 @@ class TestFreshInstall:
         cfg = cfg_mod.ConfigStore().get()
         assert cfg_mod.active_config_path() == legacy
         assert cfg.web.port == 7699
+
+
+class TestSystemTrustStore:
+    """v0.7.1：TLS 校验改走系统证书存储。
+
+    起因是一个只在真机出现的报错：设置页里豆包/方舟显示
+    「[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer certificate」，
+    而浏览器打开同一个地址正常。根因是服务端下发**交叉签名**的根证书
+    （leaf → RapidSSL TLS RSA CA G1 → DigiCert Global Root G2(交叉签名版)
+    → DigiCert Global Root CA），certifi 里只有自签版 G2，OpenSSL 沿单链
+    走到 Global Root CA 就断了；浏览器会构建多条候选链，所以不报。
+
+    修法：启动时 `truststore.inject_into_ssl()`，让校验行为与浏览器一致。
+    这里锁住三件事：幂等、缺依赖时降级不抛、以及 lifespan 确实调用了它。
+    """
+
+    def test_enable_is_idempotent(self):
+        from app.core import tls
+
+        first = tls.enable_system_trust_store()
+        second = tls.enable_system_trust_store()
+        assert isinstance(first, bool)
+        assert first == second, "重复调用不应改变结果，也不应重复注入"
+
+    def test_missing_dependency_degrades_instead_of_raising(self, monkeypatch):
+        """没装 truststore 的机器（或裁过的包）必须照常启动。"""
+        from app.core import tls
+
+        monkeypatch.setattr(tls, "_truststore", None)
+        monkeypatch.setattr(tls, "_enabled", False)
+        assert tls.enable_system_trust_store() is False
+
+    def test_injection_failure_degrades(self, monkeypatch):
+        """注入本身抛异常时也只降级，不把异常带进启动流程。"""
+
+        class _Boom:
+            @staticmethod
+            def inject_into_ssl():
+                raise RuntimeError("boom")
+
+        from app.core import tls
+
+        monkeypatch.setattr(tls, "_truststore", _Boom())
+        monkeypatch.setattr(tls, "_enabled", False)
+        assert tls.enable_system_trust_store() is False
+
+    def test_lifespan_enables_it_before_serving(self, monkeypatch):
+        """必须在任何 HTTP 客户端创建之前切换，否则首个请求已经用了 certifi。
+
+        这里断言的是**启动顺序**而不是副作用：lifespan 是同步生成器，
+        真跑一遍会连带建库、起队列、拉起 worker，单测里没必要付这个代价。
+        """
+        import inspect
+
+        import app.main as main_mod
+
+        src = inspect.getsource(main_mod.lifespan)
+        assert "enable_system_trust_store()" in src, "lifespan 没有接入系统信任库"
+        assert src.index("enable_system_trust_store()") < src.index("cfg = get_config()"), (
+            "必须先切换信任库，再做任何可能发请求的初始化"
+        )
+
+
+class TestOllamaAutostart:
+    """v0.7.1：切到 ollama 时自动拉起本机进程。
+
+    真实场景：设置页 ollama 卡片显示「WinError 10061 目标计算机积极拒绝」，
+    但模型（8.4G）早就下好了——只是进程没启动。让用户自己去开始菜单找
+    「Ollama」并不合理，应用自己拉起来即可。
+
+    安全边界同样要守住：只对回环地址动手，冷却期内不重复 fork。
+    """
+
+    def test_only_loopback_is_allowed(self):
+        from app.services import ollama_service as svc
+
+        assert svc.is_loopback("http://127.0.0.1:11434/v1") is True
+        assert svc.is_loopback("http://localhost:11434/v1") is True
+        assert svc.is_loopback("http://[::1]:11434/v1") is True
+        # 别人的机器：绝不隔着网络去启动别人的服务
+        assert svc.is_loopback("http://192.168.1.9:11434/v1") is False
+        assert svc.ensure_running("http://192.168.1.9:11434/v1", wait=0.1) is False
+
+    def test_already_running_does_not_spawn(self, monkeypatch):
+        from app.services import ollama_service as svc
+
+        spawned: list[object] = []
+        monkeypatch.setattr(svc, "_alive", lambda *a, **k: True)
+        monkeypatch.setattr(svc, "_spawn", lambda exe: spawned.append(exe) or True)
+
+        assert svc.ensure_running("http://127.0.0.1:11434/v1", wait=0.1) is True
+        assert spawned == [], "已经在跑就不该再拉一个进程"
+
+    def test_missing_binary_returns_false(self, monkeypatch):
+        from app.services import ollama_service as svc
+
+        monkeypatch.setattr(svc, "_alive", lambda *a, **k: False)
+        monkeypatch.setattr(svc, "_candidates", lambda: [])
+        monkeypatch.setattr(svc, "_last_attempt", {})
+
+        assert svc.ensure_running("http://127.0.0.1:11434/v1", wait=0.1) is False
+
+    def test_cooldown_prevents_repeated_spawn(self, monkeypatch):
+        """设置页会反复探测，60 秒内只准拉一次。"""
+        from app.services import ollama_service as svc
+
+        spawned: list[object] = []
+        monkeypatch.setattr(svc, "_alive", lambda *a, **k: False)
+        monkeypatch.setattr(svc, "_candidates", lambda: [Path("ollama.exe")])
+        monkeypatch.setattr(svc, "_spawn", lambda exe: spawned.append(exe) or True)
+        monkeypatch.setattr(svc, "_last_attempt", {})
+
+        base = "http://127.0.0.1:11434/v1"
+        assert svc.ensure_running(base, wait=0.1) is False
+        assert svc.ensure_running(base, wait=0.1) is False
+        assert len(spawned) == 1, "冷却期内重复调用不应重复 fork"

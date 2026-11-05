@@ -30,7 +30,7 @@ APP_NAME = "SecondBrain"
 # 而这里的 APP_VERSION 根本没人用 —— 于是侧边栏显示的版本号
 # 和真实进度永远对不上（都写到 v38 了还写着 0.5.0）。
 # 现在：改这一行，后端接口 / 前端显示 / 打包元数据一起变。
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.7.1"
 
 
 def _detect_project_root() -> Path:
@@ -228,6 +228,8 @@ class AIConfig:
     provider: str = "openai_compat"
     auto_fallback: bool = True
     fallback_threshold: int = 3
+    # 切到 ollama / 启动时发现本机没在监听，就顺手把 ollama 拉起来（仅回环地址）
+    auto_start_ollama: bool = True
     ollama: OllamaProviderConfig = field(default_factory=OllamaProviderConfig)
     openai_compat: OllamaProviderConfig = field(
         default_factory=lambda: OllamaProviderConfig(
@@ -586,6 +588,9 @@ class ConfigStore:
         ai = AIConfig(
             provider=_get(toml_data, "ai.provider", "openai_compat"),
             auto_fallback=_as_bool(_get(toml_data, "ai.auto_fallback", True), True),
+            auto_start_ollama=_as_bool(
+                _get(toml_data, "ai.auto_start_ollama", True), True
+            ),
             fallback_threshold=_as_int(
                 _get(toml_data, "ai.fallback_threshold", 3), 3
             ),
@@ -733,6 +738,8 @@ class ConfigStore:
                 cfg.web.allow_lan = bool(kwargs["allow_lan"])
             if "auto_fallback" in kwargs:
                 cfg.ai.auto_fallback = bool(kwargs["auto_fallback"])
+            if "auto_start_ollama" in kwargs:
+                cfg.ai.auto_start_ollama = bool(kwargs["auto_start_ollama"])
             if "vault_path" in kwargs:
                 cfg.vault.path = Path(str(kwargs["vault_path"]))
                 cfg.vault.ensure()

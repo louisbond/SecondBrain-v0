@@ -5,6 +5,8 @@ uvicorn[standard]>=0.27
 httpx>=0.26
 pydantic>=2.5
 python-multipart>=0.0.9
+# TLS 校验走系统证书存储（交叉签名证书链，如火山方舟，certifi 会误判为链断）
+truststore>=0.10.0
 
 # P0 中文分词（FTS5 双列写入；缺失时自动降级 bigram_cjk）
 jieba>=0.42.1

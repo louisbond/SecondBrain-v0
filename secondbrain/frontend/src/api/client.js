@@ -283,6 +283,7 @@ export const settingsApi = {
   switchProvider: (provider) => api.post('/api/settings/provider', { provider }),
   resetProvider: () => api.post('/api/settings/provider/reset'),
   setAutoFallback: (enabled) => api.post('/api/settings/auto-fallback', { enabled }),
+  setAutoStartOllama: (enabled) => api.post('/api/settings/auto-start-ollama', { enabled }),
   setLan: (allowLan, token) => api.post('/api/settings/lan', { allow_lan: allowLan, token }),
   setVault: (path) => api.post('/api/settings/vault', { path }),
   reindex: () => api.post('/api/settings/reindex'),

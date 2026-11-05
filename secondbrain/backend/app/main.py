@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import APP_VERSION, get_config
 from app.core.db import get_db
+from app.core.tls import enable_system_trust_store
 from app.core.tokenizer import jieba_error, search_mode
 
 FRONTEND_DIST = (
@@ -66,9 +67,19 @@ def _is_api(path: str) -> bool:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """服务启停：初始化 DB、启动任务队列、注册 worker。"""
+    # 必须在任何 HTTP 客户端之前：让 TLS 校验走系统证书存储，
+    # 否则交叉签名证书链（如火山方舟）会被 certifi 判为"找不到本地签发者"。
+    enable_system_trust_store()
+
     cfg = get_config()
     cfg.vault.ensure()
     db = get_db()
+
+    # 主链就是本地模型时，启动即拉起（后台线程，不拖慢启动）
+    if cfg.ai.provider == "ollama" and cfg.ai.auto_start_ollama:
+        from app.services.ollama_service import ensure_running_async
+
+        ensure_running_async(cfg.ai.ollama.base_url)
 
     from app.workers.pipeline import register_workers
     from app.workers.queue import get_queue

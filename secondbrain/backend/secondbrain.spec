@@ -47,6 +47,13 @@ hiddenimports = [
     "trafilatura",
     "httpx",
     "multipart",
+    # TLS：让校验走操作系统证书存储（交叉签名证书链，如火山方舟）。
+    # tls.py 里是 try/except 可选导入，静态分析会跳过，必须显式列出。
+    "truststore",
+    "truststore._api",
+    "truststore._windows",
+    "truststore._openssl",
+    "truststore._ssl_constants",
     # 内嵌窗口（桌面模式）：Windows 走 EdgeChromium 后端（WebView2）
     "webview",
     "webview.platforms.edgechromium",

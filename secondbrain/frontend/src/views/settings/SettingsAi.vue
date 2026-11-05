@@ -97,6 +97,18 @@ const ENDPOINT_PRESETS = [
         </label>
       </div>
 
+      <div class="row" style="margin-top: 8px">
+        <label class="row" style="margin: 0; cursor: pointer">
+          <input
+            type="checkbox"
+            :checked="settings.ai.auto_start_ollama"
+            style="width: auto"
+            @change="settingsApi.setAutoStartOllama($event.target.checked).then(load)"
+          />
+          自动拉起本机 Ollama（切到 Ollama 或启动时发现未运行，就代为启动）
+        </label>
+      </div>
+
       <div class="alert info" style="margin-top: 12px">
         embedding：{{ settings.ai.embedding_model }}
         <span :class="settings.ai.embedding_real ? 'badge ok' : 'badge warn'">

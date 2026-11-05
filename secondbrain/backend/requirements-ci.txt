@@ -24,6 +24,7 @@ pydantic>=2.5
 python-multipart>=0.0.9
 jieba>=0.42.1
 yt-dlp>=2024.4.9       # 采集/转写链路；单测断言它可定位（见文件头说明）
+truststore>=0.10.0     # app/core/tls.py 的顶层 import，缺了会走降级分支（单测覆盖两条路）
 
 # --- 测试 ---
 pytest>=8.0

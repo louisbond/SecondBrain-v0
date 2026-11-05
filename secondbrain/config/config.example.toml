@@ -41,6 +41,9 @@ editor = "vditor"
 provider = "openai_compat" # workbuddy / ollama / openai_compat
 auto_fallback = true
 fallback_threshold = 3
+# 切到 ollama（或启动时主链就是 ollama）发现本机没在监听，就代为拉起 ollama 进程。
+# 只对回环地址生效，60 秒内最多尝试一次。
+auto_start_ollama = true
 
 [ai.ollama]
 base_url = "http://127.0.0.1:11434/v1"

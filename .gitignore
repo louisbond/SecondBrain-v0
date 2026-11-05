@@ -4,7 +4,8 @@ secondbrain/frontend/node_modules/
 secondbrain/frontend/public/vditor/
 secondbrain/build/
 secondbrain/dist/
-secondbrain/dist-release/
+# 按版本打的包（dist-release / dist-0.7.1 / dist-0.7.1b …）
+secondbrain/dist-*/
 secondbrain/data/
 secondbrain/bin/
 __pycache__/
