@@ -4,6 +4,7 @@ secondbrain/frontend/node_modules/
 secondbrain/frontend/public/vditor/
 secondbrain/build/
 secondbrain/dist/
+secondbrain/dist-release/
 secondbrain/data/
 secondbrain/bin/
 __pycache__/
