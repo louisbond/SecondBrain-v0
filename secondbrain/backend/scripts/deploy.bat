@@ -1,8 +1,8 @@
 @echo off
 REM ============================================================
 REM  SecondBrain 部署脚本（换新版本用）
-REM  用法：把新构建目录（如 <workspace>\Systems666\_sb_v9\SecondBrain）
-REM        放到 DEPLOY_SRC，管理员身份运行本脚本
+REM  用法：deploy.bat "<新构建目录>" "<安装目录>"
+REM        两个路径都由参数传入，脚本内不含任何机器专用路径
 REM
 REM  关键点：
 REM   - 先停进程 → 备份 → 清空目标 → 再拷入
@@ -11,11 +11,16 @@ REM   - 拷贝后校验关键文件（db / config / logs）
 REM ============================================================
 setlocal enabledelayedexpansion
 
-REM ---- 可改区 ----
-set "TARGET=<workspace>\Systems666\SecondBrain"
+REM ---- 参数 ----
 set "DEPLOY_SRC=%~1"
+set "TARGET=%~2"
 if "%DEPLOY_SRC%"=="" (
-  echo 用法: %~nx0 "<workspace>\Systems666\_sb_v9\SecondBrain"
+  echo 用法: %~nx0 "<新构建目录>" "<安装目录>"
+  echo 例:   %~nx0 "D:\_dist\SecondBrain" "D:\Apps\SecondBrain"
+  exit /b 1
+)
+if "%TARGET%"=="" (
+  echo [错误] 缺少安装目录参数
   exit /b 1
 )
 
@@ -43,7 +48,7 @@ timeout /t 2 /nobreak >nul
 REM ---- 2. 备份现有数据与配置（只留这两样）----
 set "STAMP=%DATE:~-4%%DATE:~4,2%%DATE:~7,2%-%TIME:~0,2%%TIME:~3,2%"
 set "STAMP=%STAMP: =0%"
-set "BAK=<workspace>\Systems666\_sb_backup_%STAMP%"
+set "BAK=%TARGET%\..\_sb_backup_%STAMP%"
 echo [2/5] 备份数据与配置到 %BAK%
 if not exist "%BAK%" mkdir "%BAK%"
 if exist "%TARGET%\data" robocopy "%TARGET%\data" "%BAK%\data" /E /NFL /NDL /NJH /NJS /NP >nul

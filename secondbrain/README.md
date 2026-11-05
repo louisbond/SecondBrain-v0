@@ -556,7 +556,7 @@ schtasks /Create /TN "SecondBrain" /TR "<python> -m uvicorn app.main:app --host 
 
 ## 独立运行（不依赖任何会话）
 
-打包产物在 `<workspace>\Systems666\SecondBrain\`：
+打包产物在 `dist/SecondBrain/`，可以整体复制到任意目录后双击即用：
 
 ```text
 SecondBrain/
