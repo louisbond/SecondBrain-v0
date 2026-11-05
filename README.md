@@ -13,6 +13,16 @@ A 进货  →  B 提炼  →  C 创作  →  D 运维
 （原文）    （AI 摘要 + 手稿）  （笔记）    （回顾 / 标签 / 归档）
 ```
 
+## 下载
+
+Windows 免安装版（解压后双击 `SecondBrain.exe`，不需要装 Python）：
+
+**<https://github.com/louisbond/SecondBrain-v0/releases/latest>**
+
+首次运行会在 `~/.secondbrain/` 建库，数据不出本机；想用自己的 Obsidian 库，
+在「设置 → 采集与存储 → Vault 目录」改一行即可。完整操作见包内 `使用说明.md`。
+未做代码签名，首次运行 SmartScreen 会提示「未知发布者」→ 更多信息 → 仍要运行。
+
 核心原则：**AI 起草、人工逐条核准**。AI 给的是草稿，进不进知识库由人决定。
 
 ---
