@@ -2721,7 +2721,10 @@ class TestFreshInstall:
         text = target.read_text(encoding="utf-8")
         assert 'path = ""' in text, "模板里仍写死了笔记库路径"
         assert 'data_dir = ""' in text
-        assert "AllDocument666" not in text
+        # 模板里不许出现任何**绝对路径**（不写死某台机器的目录名，
+        # 否则这个断言本身就把开发机路径留在仓库里了）
+        assert not re.search(r'(?m)^\s*\w+\s*=\s*"[A-Za-z]:[\\/]', text), "模板含 Windows 绝对路径"
+        assert not re.search(r'(?m)^\s*\w+\s*= "/', text), "模板含 POSIX 绝对路径"
         assert not re.search(r'(?i)^\s*(api_key|token|password)\s*=\s*"[^"]+"', text, re.M)
 
         # 密钥写回与读取必须落到同一份文件（以前写 exe 同级、读用户目录）
