@@ -9,6 +9,12 @@ target-version = "py313"
 # 构建产物与缓存目录
 exclude = ["build", "dist", ".pytest_cache", "__pycache__", "data"]
 
+# pytest-asyncio 2.x 起要求显式声明异步 fixture 的事件循环作用域。
+# 不写就每次跑测试刷一条 DeprecationWarning，且未来版本默认值会变
+# —— 把当前行为（function 级）写死，避免哪天升级后测试莫名其妙串味。
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+
 [tool.ruff.lint]
 # E/W pycodestyle · F pyflakes · B bugbear · C4 comprehensions
 # SIM simplify · UP pyupgrade · I isort

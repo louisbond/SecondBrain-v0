@@ -80,15 +80,19 @@ def install_crash_handler(log_path: Path | None) -> None:
         except Exception:  # noqa: BLE001
             pass
         try:
-            # 用 Windows 原生 MessageBox（比 tkinter 轻，打包时不用带 tkinter）
+            # 用 Windows 原生 MessageBox（比 tkinter 轻，打包时不用带 tkinter）。
+            # ctypes.windll 只在 Windows 上存在：非 Windows（CI 的 Linux runner、
+            # 未来的跨平台移植）没有它，所以用 getattr 取，取不到就直接跳过弹窗。
             import ctypes
 
-            ctypes.windll.user32.MessageBoxW(
-                None,
-                f"程序遇到未处理的错误，已写入日志：\n\n{log_path}\n\n请把该文件内容反馈给我。",
-                "SecondBrain 出错了",
-                0x10,  # MB_ICONERROR
-            )
+            windll = getattr(ctypes, "windll", None)
+            if windll is not None:
+                windll.user32.MessageBoxW(
+                    None,
+                    f"程序遇到未处理的错误，已写入日志：\n\n{log_path}\n\n请把该文件内容反馈给我。",
+                    "SecondBrain 出错了",
+                    0x10,  # MB_ICONERROR
+                )
         except Exception:  # noqa: BLE001
             pass
 

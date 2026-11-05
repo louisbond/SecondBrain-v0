@@ -3,11 +3,15 @@
 # 与 requirements.txt（完整运行时依赖）的区别：
 #   · 不含 winotify（Windows 专用，Linux 装不上）
 #   · 不含 faster-whisper / onnxruntime / transformers / sentencepiece（重型模型依赖）
-#   · 不含 yt-dlp / trafilatura（采集链路的可选依赖）
+#   · 不含 trafilatura（正文抽取，采集链路可选）
 #
 # 这些都是**函数内惰性 import**：核心包、单测、契约测试都不需要它们。
 # 因此 CI 能在干净的 Linux runner 上跑完平台无关的检查，
 # 不必为了 lint / 类型检查下载几百 MB 的模型运行时。
+#
+# 例外：yt-dlp 要在。它是纯 Python 单包（无编译依赖），而单测里有一条
+# 「采集链路的 yt-dlp 必须可定位」的断言——那是产品的不变量，不是本机环境探测。
+# CI 装上它，这条断言才是在验证代码，而不是在验证 runner 上碰巧装过什么。
 #
 # 本清单已在**全新 venv** 里验证过：mypy / ruff / 130 单测 / 契约 / 结构 全绿。
 # 唯一被跳过的是依赖 PyAV 的兼容补丁测试（pytest.importorskip("av")）。
@@ -19,6 +23,7 @@ httpx>=0.26
 pydantic>=2.5
 python-multipart>=0.0.9
 jieba>=0.42.1
+yt-dlp>=2024.4.9       # 采集/转写链路；单测断言它可定位（见文件头说明）
 
 # --- 测试 ---
 pytest>=8.0
