@@ -46,6 +46,8 @@ CHECKS: list[Check] = [
     Check("后端 lint", [sys.executable, "-m", "ruff", "check", "."], BACKEND, timeout=180),
     Check("前端 lint", [NPX, "eslint", "src"], FRONTEND, timeout=300),
     Check("格式检查", [NPX, "prettier", "--check", "src"], FRONTEND, timeout=300),
+    # v41：防止组件又长回 900 行巨石（棘轮：新文件 ≤500，历史文件不许再长）
+    Check("前端结构", [sys.executable, "-m", "pytest", "tests/frontend_structure_test.py", "-q"], BACKEND, timeout=120),
     # ---- 功能 ----
     Check("后端单测", [sys.executable, "-m", "pytest", "tests/test_secondbrain.py", "-q"], BACKEND, timeout=300),
     Check("前后端契约", [sys.executable, "-m", "pytest", "tests/frontend_contract_test.py", "-q"], BACKEND, timeout=300),
@@ -60,7 +62,7 @@ CHECKS: list[Check] = [
 # --quick 时跳过这些（要么慢，要么需要服务在跑）
 QUICK_ONLY = {
     "后端 lint", "前端 lint", "格式检查",
-    "后端单测", "前后端契约", "前端构建",
+    "后端单测", "前后端契约", "前端构建", "前端结构",
 }
 
 

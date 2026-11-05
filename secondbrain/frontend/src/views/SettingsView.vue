@@ -567,11 +567,4 @@ onMounted(load)
   min-height: 0;
   overflow-y: auto;
 }
-
-/* v35：设置页也填满窗口 */
-.settings-page {
-  height: 100%;
-  min-height: 0;
-  overflow-y: auto;
-}
 </style>

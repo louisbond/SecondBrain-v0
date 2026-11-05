@@ -34,6 +34,24 @@ def _read(rel: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _read_containing(call: str) -> tuple[str, str]:
+    """在整个前端源码里找包含某个**调用**的文件，返回 (相对路径, 源码)。
+
+    v41 的教训：以前用例把路径写死（`views/ProcessView.vue`），
+    把核准逻辑抽到 composable 之后，明明 payload 一个字没改，
+    测试却报 `ValueError: substring not found`。
+    **契约测试关心的是 payload 字段，不该关心代码放在哪个文件。**
+    这里改成按调用点定位，以后再搬文件也不会假失败。
+    """
+    for path in sorted(FRONTEND_SRC.rglob("*")):
+        if path.suffix not in (".vue", ".js", ".ts"):
+            continue
+        text = path.read_text(encoding="utf-8")
+        if call in text:
+            return str(path.relative_to(FRONTEND_SRC)), text
+    raise AssertionError(f"前端源码里找不到调用 {call}")
+
+
 def _model_fields(model_name: str) -> set[str]:
     """取后端 Pydantic 模型的字段名集合。"""
     from app.api.routes import collect, notes, review, workbench
@@ -102,7 +120,7 @@ class TestFrontendContract:
         backend_fields = _model_fields("SubmitRequest")
         assert "entries" in backend_fields
 
-        src = _read("views/WorkbenchView.vue")
+        _, src = _read_containing("collectApi.submit(")
         keys = _payload_keys_after(src, "collectApi.submit(")
         assert keys, "没解析到 collectApi.submit 的 payload 字段"
 
@@ -135,7 +153,7 @@ class TestFrontendContract:
             "再包一层会让后端收到 {entries: {entries: [...]}} → 422"
         )
 
-        caller = _read("views/WorkbenchView.vue")
+        _, caller = _read_containing("collectApi.submit(")
         keys = _payload_keys_after(caller, "collectApi.submit(")
         # 调用方传的应该是「entries 数组本身」或「整个请求体」，
         # 两种都不该出现"submit 里再包一层"
@@ -150,7 +168,7 @@ class TestFrontendContract:
         backend_fields = _model_fields("CreateNoteRequest")
         assert "body" in backend_fields
 
-        src = _read("views/OriginalView.vue")
+        _, src = _read_containing("notesApi.create(")
         keys = _payload_keys_after(src, "notesApi.create(")
         assert "title" in keys, keys
         assert "body" in keys, (
@@ -164,7 +182,7 @@ class TestFrontendContract:
     def test_review_confirm_payload_matches_model(self):
         """加工区确认入库：payload 字段必须与 ConfirmRequest 一致。"""
         backend_fields = _model_fields("ConfirmRequest")
-        src = _read("views/ProcessView.vue")
+        _, src = _read_containing("reviewApi.confirm(")
         keys = _payload_keys_after(src, "reviewApi.confirm(")
         extra = keys - backend_fields
         assert not extra, f"确认入库 payload 有后端不认识的字段 {extra}"

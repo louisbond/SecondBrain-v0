@@ -71,6 +71,7 @@ python scripts/check.py --list
 | 渲染检查 | `python tests/frontend_render_test.py` | 每页关键文案 + 无运行时错误 |
 | 用户走查 | `python scripts/user_journey_test.py` | 真实点一遍主要页面 |
 | 控件审计 | `python tests/control_audit.py` | 可点的控件逐个点，抓 JS 报错 |
+| 前端结构 | `pytest tests/frontend_structure_test.py` | 单文件行数棘轮，防组件长回巨石 |
 
 ### 代码风格工具
 
@@ -110,6 +111,30 @@ npm run format:check
 - **前端异常不许静默**：`main.js` 里有全局 errorHandler / unhandledrejection
   兜底，任何未捕获错误都会弹提示。
 - **用户数据绝不入库**：`.gitignore` 挡掉 `data/`、`logs/`、真实 config。
+
+### 前端结构（v41）
+
+两个曾经的巨石组件已拆开，**视图只做编排，逻辑与界面各自归位**：
+
+```
+views/ManageView.vue        94 行  只画页签 + KeepAlive 切换
+views/manage/               6 个页签自治组件（最大 314 行），各自持有状态、各自拉数据
+views/ProcessView.vue       72 行  只画加工队列条 + 空态
+views/process/              3 个核准子组件（ReviewCard / ParseSection / TaxonomySection）
+composables/useReview.js   471 行  核准页全部状态与业务逻辑（无模板）
+```
+
+- **设置页的 6 个页签是自治组件**：父组件不预加载全部数据，切到哪个才拉哪个；
+  `KeepAlive` 保留编辑草稿，行为与拆分前一致，首屏请求从 7 个降到 2 个。
+- **核准页用注入上下文而不是 props**：`form` / `current` / 十几个 toggle 被
+  三个区块共同读写，走 props 需要 20+ 个 v-model。`provideReview()` 创建上下文、
+  子组件 `useReview()` 取用（漏了 provide 会直接报错，不会静默拿到 undefined）。
+- **单文件 ≤ 500 行**：由「前端结构」检查用棘轮锁住。`WorkbenchView.vue`(714) 与
+  `SettingsView.vue`(577) 是**下一轮待拆候选**，已锁住当前规模不许再长，
+  不是放过 —— 不让技术债继续扩大。
+- **契约测试按调用点找源码，不按文件路径**：`_read_containing("reviewApi.confirm(")`
+  全量扫描 `src/`。以前写死 `views/ProcessView.vue`，逻辑一搬进 composable
+  就 `ValueError: substring not found` —— 明明 payload 一个字没改，测试却假失败。
 - **lint 必须全绿**：`scripts/check.py` 里有 lint 项，CI 直接用它的退出码。
 
 ### 打包分发（P10）
