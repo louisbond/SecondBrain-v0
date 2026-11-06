@@ -33,15 +33,6 @@ const testUrl = ref('')
 const testing = ref(false)
 const testResult = ref(null)
 
-const adapters = ref([])
-
-const LEVEL_LABEL = {
-  full: '完整',
-  partial: '部分',
-  unstable: '不稳定',
-  manual: '仅手动'
-}
-
 function errorText(err) {
   const detail = err?.response?.data?.detail
   if (typeof detail === 'string') return detail
@@ -60,9 +51,6 @@ async function load() {
     state.authValueMasked = data.auth_value_masked || ''
     state.authValueSet = !!data.auth_value_set
     form.auth_value = ''
-
-    const res = await settingsApi.get()
-    adapters.value = res?.data?.adapters || []
   } catch (err) {
     state.error = errorText(err)
   } finally {
@@ -233,25 +221,6 @@ onMounted(load)
         <div v-else class="fail-line">{{ testResult.error }}</div>
       </div>
     </div>
-
-    <div class="card">
-      <div class="card-title"><span>📡</span> 平台适配器能力</div>
-      <div class="dim" style="font-size: 12px; margin-bottom: 10px">
-        诚实标注：能拿到什么就写什么。短视频平台匿名请求只给标题和摘要，不是 bug。
-      </div>
-      <div class="adapter-list">
-        <div v-for="a in adapters" :key="a.name" class="adapter-item">
-          <div class="adapter-name">{{ a.label }}</div>
-          <div class="adapter-meta">
-            <span class="badge" :class="a.support_level === 'full' ? 'ok' : 'warn'">
-              {{ LEVEL_LABEL[a.support_level] || a.support_level }}
-            </span>
-            <span v-if="a.supports_subtitle" class="dim">字幕</span>
-            <span v-if="a.supports_audio" class="dim">音频</span>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -344,32 +313,6 @@ onMounted(load)
   font-size: 12px;
   color: var(--danger, #e5484d);
   word-break: break-all;
-}
-
-.adapter-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 8px;
-}
-
-.adapter-item {
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--surface-2, rgba(255, 255, 255, 0.03));
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
-}
-
-.adapter-name {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.adapter-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  font-size: 11px;
 }
 
 @media (max-width: 720px) {

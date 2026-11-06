@@ -39,9 +39,15 @@ onMounted(loadAdapters)
 
 <template>
   <div class="manage-stack manage-section">
+    <!-- v0.7.3：采集解析配置（第三方 API 兜底）并入本页，页签名就叫「采集与存储」 -->
+    <SettingsView embedded group="collect" />
     <SettingsView embedded group="storage" />
     <div class="card">
       <div class="card-title"><span>📡</span> 平台适配器能力</div>
+      <div class="dim" style="font-size: 12px; margin-bottom: 10px">
+        诚实标注：短视频平台对未登录请求只返回标题和摘要，这是平台限制而非 bug；
+        要完整文案可开启上面的第三方解析，或在后续版本用登录态 Cookie。
+      </div>
       <div class="list-item" v-for="a in adapters" :key="a.name">
         <div class="grow">
           <div class="title">{{ a.label }}</div>

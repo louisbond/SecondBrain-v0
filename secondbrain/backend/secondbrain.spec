@@ -193,3 +193,18 @@ coll = COLLECT(
     upx_exclude=[],
     name="SecondBrain",
 )
+
+# ---- 许可与用户文档 ----
+# PyInstaller 只收 .py 和 datas 里登记的文件；这三个是**产物根**（exe 同级）的
+# 随包文档，不能塞进 _internal。MIT 要求在分发副本里保留版权与许可声明，
+# 之前几版靠手工拷贝，漏一次就是合规缺口。
+import shutil as _shutil
+from pathlib import Path as _Path
+
+_out_dir = _Path(DISTPATH) / coll.name
+for _name in ("LICENSE.txt", "THIRD_PARTY_NOTICES.md", "使用说明.md"):
+    _src = PROJECT_ROOT / _name
+    if _src.exists():
+        _out_dir.mkdir(parents=True, exist_ok=True)
+        _shutil.copy2(_src, _out_dir / _name)
+        print(f"[spec] 已放入产物根: {_name}")
