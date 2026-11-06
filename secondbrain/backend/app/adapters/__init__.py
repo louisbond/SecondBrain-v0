@@ -6,7 +6,8 @@
 # 导入各适配器模块触发注册
 from app.adapters import (
     bilibili,  # noqa: F401,E402
-    social_video,  # noqa: F401,E402
+    douyin,  # noqa: F401,E402
+    kuaishou,  # noqa: F401,E402
     web,  # noqa: F401,E402
     xiaohongshu,  # noqa: F401,E402
 )

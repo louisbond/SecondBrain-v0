@@ -2869,3 +2869,252 @@ class TestOllamaAutostart:
         assert svc.ensure_running(base, wait=0.1) is False
         assert svc.ensure_running(base, wait=0.1) is False
         assert len(spawned) == 1, "冷却期内重复调用不应重复 fork"
+
+
+class TestYtdlpNetworkPath:
+    """v0.7.2：yt-dlp 必须直连优先，系统代理只能当兜底。
+
+    回归背景：用户开着 Clash（127.0.0.1:26561），采集快手报
+    `[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer certificate`。
+    实测同机 `--proxy ""` 直连正常 —— yt-dlp 在 Windows 上会读注册表代理，
+    把国内站点也塞进了代理，代理做了 TLS 拦截。
+
+    另一条：链接失效时 yt-dlp 报 `Unsupported URL: .../new-reco`，
+    这属于"内容不支持"，不该再换代理重试一遍（白等几十秒）。
+    """
+
+    def test_ssl_error_counts_as_network(self):
+        from app.core import ytdlp
+
+        assert ytdlp.is_network_error(
+            "ERROR: [generic] x: Unable to download webpage: "
+            "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+            "unable to get local issuer certificate (_ssl.c:1032)"
+        )
+        assert ytdlp.is_network_error("ERROR: Connection reset by peer")
+        assert not ytdlp.is_network_error("ERROR: Unsupported URL: https://kuaishou.com/")
+
+    def test_humanize_ssl_points_at_proxy(self):
+        from app.core import ytdlp
+
+        msg = ytdlp.humanize(
+            "ERROR: [generic] nZZ1KENF: Unable to download webpage: "
+            "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+            "unable to get local issuer certificate (_ssl.c:1032)"
+        )
+        assert "证书" in msg and "代理" in msg, msg
+
+    def test_humanize_dead_shortlink(self):
+        from app.core import ytdlp
+
+        msg = ytdlp.humanize("ERROR: Unsupported URL: https://www.kuaishou.com/new-reco")
+        assert "失效" in msg, msg
+        # 不能把链接失效说成网络问题，否则用户一直重试
+        assert "网络" not in msg.replace("不是网络问题", ""), msg
+
+    def _fake(self, monkeypatch, results):
+        """results: [(returncode, stderr)]，按调用顺序返回。"""
+        import app.core.ytdlp as ytdlp_mod
+
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+
+            class P:
+                def __init__(self, rc, err):
+                    self.returncode = rc
+                    self.stdout = '{"title": "t"}' if rc == 0 else ""
+                    self.stderr = err
+
+            rc, err = results[min(len(calls) - 1, len(results) - 1)]
+            return P(rc, err)
+
+        monkeypatch.setattr(ytdlp_mod.proc_mod, "run", fake_run)
+        monkeypatch.setattr(ytdlp_mod, "find_bin", lambda: "yt-dlp.exe")
+        return calls
+
+    def test_direct_first_and_stops_on_success(self, monkeypatch):
+        from app.core import ytdlp
+
+        calls = self._fake(monkeypatch, [(0, "")])
+        res = ytdlp.run(["--dump-single-json"], "https://v.kuaishou.com/x", timeout=5)
+
+        assert res.ok
+        assert len(calls) == 1, "直连成功就不该再走代理"
+        assert calls[0][:2] == ["yt-dlp.exe", "--proxy"]
+        assert calls[0].index("--proxy") < calls[0].index("https://v.kuaishou.com/x")
+
+    def test_ssl_failure_falls_back_to_system_proxy(self, monkeypatch):
+        """直连被证书拦掉 → 换系统代理再试一次（保留必须挂代理的网络）。"""
+        from app.core import ytdlp
+
+        ssl_err = "ERROR: Unable to download webpage: [SSL: CERTIFICATE_VERIFY_FAILED] bad"
+        calls = self._fake(monkeypatch, [(1, ssl_err), (0, "")])
+        res = ytdlp.run(["--dump-single-json"], "https://example.com/v", timeout=5)
+
+        assert res.ok
+        assert res.used_system_proxy is True
+        assert len(calls) == 2
+        assert "--proxy" not in calls[1], "回退时应该用系统代理"
+
+    def test_unsupported_url_does_not_retry(self, monkeypatch):
+        from app.core import ytdlp
+
+        calls = self._fake(monkeypatch, [(1, "ERROR: Unsupported URL: https://kuaishou.com/")])
+        res = ytdlp.run(["--dump-single-json"], "https://v.kuaishou.com/x", timeout=5)
+
+        assert not res.ok
+        assert len(calls) == 1, "链接失效重试代理没有意义，别让用户白等"
+        assert "失效" in res.error
+
+    def test_adapters_do_not_shell_out(self):
+        """采集适配器走 httpx，不再自己拼 subprocess（yt-dlp 只留给 ASR）。"""
+        import inspect
+
+        from app.adapters import douyin, kuaishou
+
+        for mod in (douyin, kuaishou):
+            src = inspect.getsource(mod)
+            assert "subprocess" not in src, mod.__name__
+
+
+class TestPlatformAdapters:
+    """v0.7.2：抖音/快手从 yt-dlp 壳换成页面解析。
+
+    匿名请求拿不到登录态内容时会退到 meta 兜底，所以这里只测纯解析部分：
+    链接里抠 ID、SSR JSON 里抠文案。真正联网抓取依赖运行环境，不在单测里做。
+    """
+
+    def test_douyin_aweme_id_from_various_links(self):
+        from app.adapters.douyin import DouyinAdapter
+
+        a = DouyinAdapter()
+        assert a._aweme_id("https://www.douyin.com/video/7257768974631374115") == (
+            "7257768974631374115"
+        )
+        assert a._aweme_id(
+            "https://www.iesdouyin.com/share/video/7257768974631374115/?region=CN"
+        ) == "7257768974631374115"
+        assert a._aweme_id("https://www.douyin.com/discover?modal_id=7703737123258307840") == (
+            "7703737123258307840"
+        )
+        assert a._aweme_id("https://www.douyin.com/user/xyz") == ""
+
+    def test_douyin_parse_router_data(self):
+        from app.adapters.douyin import DouyinAdapter
+
+        html = (
+            "<script>window._ROUTER_DATA = "
+            '{"loaderData":{"video_(id)/page":{"videoInfoRes":{"item_list":['
+            '{"desc":"今天的晚饭 #美食","duration":15200,'
+            '"author":{"nickname":"小张"}}]}}}};'
+            "</script>"
+        )
+        data = DouyinAdapter._parse_router_data(html)
+        assert data["loaderData"]["video_(id)/page"]["videoInfoRes"]["item_list"][0][
+            "desc"
+        ].startswith("今天的晚饭")
+
+        from app.adapters.douyin import _find_key
+
+        items = _find_key(data, "item_list")
+        result = DouyinAdapter()._build_result(items[0], "7257768974631374115")
+        assert result is not None and result.ok
+        assert result.title == "今天的晚饭 #美食"
+        assert "小张" in result.text and "文案" in result.text
+        assert result.extra["duration"] == 15
+
+    def test_kuaishou_photo_id_and_state(self):
+        from app.adapters.kuaishou import KuaishouAdapter
+
+        a = KuaishouAdapter()
+        assert a._photo_id("https://www.kuaishou.com/short-video/3xtest123") == "3xtest123"
+        assert a._photo_id("https://v.m.chenzhongtech.com/fw/photo/3xabcd") == "3xabcd"
+        assert a._photo_id("https://www.kuaishou.com/profile/xx") == ""
+
+        html = (
+            "<script>window.__APOLLO_STATE__ = "
+            '{"VisionVideoDetailPhoto:3x1":{"caption":"赶海第一天","userName":"老王"}};'
+            "</script>"
+        )
+        state = a._parse_state(html)
+        result = a._build_result(state, "3x1")
+        assert result is not None and result.ok
+        assert result.title == "赶海第一天"
+        assert "老王" in result.text
+
+    def test_meta_fallback_extracts_title_and_description(self, monkeypatch):
+        """任何页面至少要有标题+摘要，不能空手失败。"""
+        from app.adapters import web as web_mod
+
+        html = (
+            "<html><head><title>某某文章 - 知乎</title>"
+            '<meta property="og:description" content="这是文章摘要，长度足够触发兜底逻辑。">'
+            "</head><body></body></html>"
+        )
+
+        class R:
+            text = html
+
+        class FakeClient:
+            def get(self, url):
+                return R()
+
+        adapter = web_mod.WebAdapter()
+        monkeypatch.setattr(adapter, "_extract_trafilatura", lambda url: ("", ""))
+        monkeypatch.setattr(adapter, "_extract_playwright", lambda url: ("", ""))
+        # 注意：extract() 换 URL 时会 close() 掉旧 client，所以必须 patch 类属性，
+        # 不能 patch 实例上的 client 对象。
+        monkeypatch.setattr(web_mod.WebAdapter, "client", property(lambda self: FakeClient()))
+
+        result = adapter.extract("https://zhuanlan.zhihu.com/p/123")
+        assert result.ok
+        assert result.extractor == "meta"
+        assert "某某文章" in result.title, result.title
+        assert "这是文章摘要" in result.text
+
+
+class TestEmbeddingOffline:
+    """v0.7.2：embedding 后端必须离线判定，绝不联网。
+
+    回归背景：装上 transformers 之后，`AutoTokenizer.from_pretrained("bge-m3")`
+    会去 huggingface.co 查 revision；本机网络不通，**不是抛异常而是挂住**
+    （socket.create_connection 无限等）。表现为整个采集流程卡死、
+    后端单测跑不完（155 个只跑了 18 个就超时）。
+    """
+
+    def test_empty_ref_is_not_ready(self):
+        from app.services.embedding_service import EmbeddingService
+
+        assert EmbeddingService._model_ready("") is False
+
+    def test_local_dir_is_ready(self, tmp_path):
+        from app.services.embedding_service import EmbeddingService
+
+        assert EmbeddingService._model_ready(str(tmp_path)) is True
+
+    def test_bare_name_without_cache_is_not_ready(self):
+        from app.services.embedding_service import EmbeddingService
+
+        # 构造一个绝不会出现在缓存里的名字
+        assert EmbeddingService._model_ready("secondbrain-nonexistent/bge-test-xyz") is False
+
+    def test_falls_back_to_hash_without_network(self, monkeypatch):
+        from app.services import embedding_service as mod
+
+        svc = mod.EmbeddingService()
+        svc._loaded = False
+        monkeypatch.setattr(svc, "_model_ref", lambda: "secondbrain-nonexistent/bge-test-xyz")
+
+        # 只要走了网络就会挂住 —— 这里能返回就说明没联网
+        assert svc.backend == "hash"
+        assert svc.available() is False
+
+    def test_hash_backend_still_produces_vectors(self):
+        from app.services import embedding_service as mod
+
+        svc = mod.EmbeddingService()
+        vector = svc._hash_encode("短视频文案分析")
+        assert len(vector) == svc.cfg.ai.embedding.dim
+        assert any(v != 0 for v in vector)

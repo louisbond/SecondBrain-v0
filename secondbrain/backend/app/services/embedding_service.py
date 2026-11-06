@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 import re
 import sqlite3
 import struct
@@ -44,12 +45,26 @@ class EmbeddingService:
         """加载 embedding 后端，返回后端名。
 
         顺序：本地模型目录（离线）→ sentence-transformers → transformers → 哈希降级。
+
+        **离线纪律**：这里是纯本地应用，绝不能因为"想加载模型"而联网。
+        transformers 的 `from_pretrained("bge-m3")` 会去 huggingface.co
+        查 revision，网络不通时**不是失败而是挂住**（实测 socket 建连无限等），
+        整个采集流程与单测都卡死在这里。所以先用 `_model_ready()` 判断
+        本地到底有没有模型，没有就直接走哈希降级。
         """
         with self._lock:
             if self._loaded:
                 return self._backend
             self._loaded = True
             model_ref = self._model_ref()
+
+            if not self._model_ready(model_ref):
+                self._backend = "hash"
+                return self._backend
+
+            # 有本地模型：强制离线，避免任何一次 hub 往返
+            os.environ.setdefault("HF_HUB_OFFLINE", "1")
+            os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
             try:
                 from sentence_transformers import SentenceTransformer  # type: ignore
@@ -62,14 +77,37 @@ class EmbeddingService:
             try:
                 from transformers import AutoModel, AutoTokenizer  # type: ignore
 
-                self._tokenizer = AutoTokenizer.from_pretrained(model_ref)
-                self._torch_model = AutoModel.from_pretrained(model_ref)
+                self._tokenizer = AutoTokenizer.from_pretrained(
+                    model_ref, local_files_only=True
+                )
+                self._torch_model = AutoModel.from_pretrained(
+                    model_ref, local_files_only=True
+                )
                 self._torch_model.eval()
                 self._backend = "transformers"
                 return self._backend
             except Exception:
                 self._backend = "hash"
                 return self._backend
+
+    @staticmethod
+    def _model_ready(ref: str) -> bool:
+        """本地到底有没有这个模型（有才允许尝试加载）。
+
+        - `ref` 是目录 → 直接看目录在不在（用户自己放的模型）；
+        - `ref` 是裸模型名 → 看 HF 缓存里有没有，没有就别去联网。
+        """
+        if not ref:
+            return False
+        if Path(ref).exists():
+            return True
+        try:
+            from huggingface_hub import constants  # type: ignore
+
+            cache = Path(constants.HF_HUB_CACHE)
+        except Exception:
+            cache = Path.home() / ".cache" / "huggingface" / "hub"
+        return (cache / f"models--{ref.replace('/', '--')}").exists()
 
     def _model_ref(self) -> str:
         """模型引用：优先本地目录（离线可用），否则用模型名。"""

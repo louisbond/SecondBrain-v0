@@ -30,7 +30,7 @@ APP_NAME = "SecondBrain"
 # 而这里的 APP_VERSION 根本没人用 —— 于是侧边栏显示的版本号
 # 和真实进度永远对不上（都写到 v38 了还写着 0.5.0）。
 # 现在：改这一行，后端接口 / 前端显示 / 打包元数据一起变。
-APP_VERSION = "0.7.1"
+APP_VERSION = "0.7.2"
 
 
 def _detect_project_root() -> Path:

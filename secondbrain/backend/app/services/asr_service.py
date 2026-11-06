@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -87,36 +86,10 @@ class ASRService:
 
     # -- yt-dlp -----------------------------------------------------------
     def _ytdlp_bin(self) -> str:
-        """定位 yt-dlp 可执行文件。
+        """定位 yt-dlp 可执行文件（逻辑统一在 app.core.ytdlp）。"""
+        from app.core import ytdlp
 
-        查找顺序：内嵌 bin/ → Python 解释器同目录的 Scripts/ → PATH。
-        第二步很重要：pip 装的 console script 落在
-        `<python-dir>/Scripts/`，该目录未必在 PATH 里，
-        找不到就会让整条 ASR 管线直接失败。
-        """
-        cfg = self.cfg
-        for name in ("yt-dlp.exe", "yt-dlp"):
-            candidate = cfg.bin_dir / name
-            if candidate.exists():
-                return str(candidate)
-
-        import sys
-
-        # Windows 布局：<install>/python.exe 与 <install>/Scripts/ 是兄弟目录
-        install_dir = Path(sys.executable).resolve().parent
-        candidates = [
-            install_dir,
-            install_dir / "Scripts",
-            install_dir / "bin",
-        ]
-        for base in candidates:
-            for name in ("yt-dlp.exe", "yt-dlp"):
-                candidate = base / name
-                if candidate.exists():
-                    return str(candidate)
-
-        found = shutil.which("yt-dlp")
-        return found or "yt-dlp"
+        return ytdlp.find_bin()
 
     def _ffmpeg_dir(self) -> Path:
         """内嵌 ffmpeg 目录（yt-dlp 需要）。"""
@@ -202,37 +175,17 @@ class ASRService:
     def _run_ytdlp(
         self, url: str, args: list[str], timeout: int
     ) -> tuple[bool, str | None, str | None]:
-        """执行 yt-dlp，返回 (ok, stdout, 错误信息)。"""
-        cmd = [self._ytdlp_bin(), *args, url]
-        # 用 proc.run 保证不弹黑窗（yt-dlp 是控制台程序）
-        from app.core import proc as proc_mod
+        """执行 yt-dlp，返回 (ok, stdout, 错误信息)。
 
-        try:
-            proc = proc_mod.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                encoding="utf-8",
-                errors="replace",
-                shell=False,
-            )
-        except FileNotFoundError:
-            return False, None, "未找到 yt-dlp（请放到 bin/ 目录或安装到 PATH）"
-        except subprocess.TimeoutExpired:
-            return False, None, f"yt-dlp 下载超时（{timeout}s）"
-        except Exception as exc:  # noqa: BLE001
-            return False, None, f"yt-dlp 执行异常：{exc}"
+        统一走 `app.core.ytdlp`：直连优先、网络类错误回退系统代理，
+        错误文案已翻成中文（否则用户只会看到 CERTIFICATE_VERIFY_FAILED）。
+        """
+        from app.core import ytdlp
 
-        if proc.returncode != 0:
-            detail = (proc.stderr or proc.stdout or "").strip()
-            # 提取 yt-dlp 的 ERROR 行，更可读
-            for line in detail.splitlines():
-                if line.startswith("ERROR:"):
-                    detail = line
-                    break
-            return False, None, f"yt-dlp 失败（退出码 {proc.returncode}）：{detail[:300]}"
-        return True, proc.stdout, None
+        res = ytdlp.run(args, url, timeout=timeout)
+        if not res.ok:
+            return False, None, res.error
+        return True, res.stdout, None
 
     # -- faster-whisper ---------------------------------------------------
     def _load_model(self) -> Any:

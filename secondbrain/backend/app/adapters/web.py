@@ -9,6 +9,9 @@
 
 from __future__ import annotations
 
+import re
+from html import unescape as _unescape
+
 import httpx
 
 from app.adapters.base import Adapter, ExtractResult, register
@@ -71,7 +74,25 @@ class WebAdapter(Adapter):
                 ok=True, title=title, text=text, extractor="playwright"
             )
 
-        # 3) 失败 → 交给上层走 extract_failed + 行内手动粘贴
+        # 3) meta 兜底：任何页面至少有 title / og:description。
+        #
+        # 「啥链接都能提取」的实际含义就在这里：文章类走正文，视频/产品页
+        # 正文抽不出来时，也要把标题和摘要落成一条素材，而不是直接失败
+        # 让用户去手动粘贴。
+        meta_title, meta_desc = self._extract_meta(url)
+        if meta_desc and len(meta_desc) >= 12:
+            return ExtractResult(
+                ok=True,
+                title=meta_title or meta_desc[:40],
+                text=(
+                    f"标题：{meta_title}\n\n摘要：{meta_desc}"
+                    if meta_title
+                    else f"摘要：{meta_desc}"
+                ),
+                extractor="meta",
+            )
+
+        # 4) 失败 → 交给上层走 extract_failed + 行内手动粘贴
         reason = "正文过短或抽取失败"
         if not text:
             reason = "页面无法访问或需要 JS 渲染"
@@ -80,6 +101,41 @@ class WebAdapter(Adapter):
             extractor="trafilatura",
             error=f"{reason}（可手动粘贴正文）",
         )
+
+    def _extract_meta(self, url: str) -> tuple[str, str]:
+        """抓 og/meta 标题与摘要（最后一道兜底，几乎不会空手）。"""
+        try:
+            resp = self.client.get(url)
+            html = resp.text or ""
+        except Exception:  # noqa: BLE001
+            return "", ""
+
+        def pick(patterns: tuple[str, ...]) -> str:
+            for pattern in patterns:
+                m = re.search(pattern, html, re.I | re.S)
+                if m:
+                    value = _unescape(m.group(1)).strip()
+                    if value:
+                        return value
+            return ""
+
+        title = pick(
+            (
+                r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']*)["\']',
+                r'<meta[^>]+name=["\']twitter:title["\'][^>]+content=["\']([^"\']*)["\']',
+                r"<title[^>]*>(.*?)</title>",
+            )
+        )
+        desc = pick(
+            (
+                r'<meta[^>]+property=["\']og:description["\'][^>]+content=["\']([^"\']*)["\']',
+                r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)["\']',
+                r'<meta[^>]+name=["\']twitter:description["\'][^>]+content=["\']([^"\']*)["\']',
+            )
+        )
+        if " - 知乎" in title:
+            title = title.replace(" - 知乎", "").strip()
+        return title, desc
 
     def _extract_trafilatura(self, url: str) -> tuple[str, str]:
         try:
