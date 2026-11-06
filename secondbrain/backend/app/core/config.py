@@ -30,7 +30,7 @@ APP_NAME = "SecondBrain"
 # 而这里的 APP_VERSION 根本没人用 —— 于是侧边栏显示的版本号
 # 和真实进度永远对不上（都写到 v38 了还写着 0.5.0）。
 # 现在：改这一行，后端接口 / 前端显示 / 打包元数据一起变。
-APP_VERSION = "0.7.2"
+APP_VERSION = "0.7.3"
 
 
 def _detect_project_root() -> Path:
@@ -136,7 +136,14 @@ def active_config_path() -> Path:
 
 
 def active_secret_path() -> Path:
-    """密钥文件同理；写回必须用这个路径，否则会出现「保存了却读不到」。"""
+    """密钥文件同理；写回必须用这个路径，否则会出现「保存了却读不到」。
+
+    指定了 `SECOND_BRAIN_CONFIG` 时，密钥跟随配置文件放在同一目录 ——
+    配置读 A、密钥写 B 是最隐蔽的一类 bug：保存返回成功，重启后密钥没了。
+    """
+    env_path = os.environ.get("SECOND_BRAIN_CONFIG")
+    if env_path:
+        return Path(env_path).expanduser().parent / "secrets.json"
     for p in _candidate_secret_paths():
         if p.exists():
             return p
@@ -262,6 +269,26 @@ class CollectConfig:
 
 
 @dataclass
+class ParserApiConfig:
+    """第三方解析 API（可选兜底）。
+
+    平台不给匿名请求返回正文时（抖音/快手/小红书），可以接一个聚合解析服务。
+    **默认关闭**：开启意味着把链接发给第三方，必须由用户显式同意。
+
+    `url_template` 支持 `{url}` 占位符，如
+    `https://api.example.com/parse?url={url}&key=xxx`；
+    不含占位符时自动拼成 `...?url=<encode>`。
+    需要放到 header 里的鉴权用 auth_header / auth_value。
+    """
+
+    enabled: bool = False
+    url_template: str = ""
+    auth_header: str = ""
+    auth_value: str = ""
+    timeout: int = 30
+
+
+@dataclass
 class DuplicateConfig:
     vector_threshold: float = 0.85
 
@@ -286,6 +313,7 @@ class AppConfig:
     ai: AIConfig
     asr: ASRConfig
     collect: CollectConfig
+    parser: ParserApiConfig
     duplicate: DuplicateConfig
     notify: NotifyConfig
     maintain: MaintainConfig
@@ -521,7 +549,9 @@ class ConfigStore:
                     break
 
         secrets: dict[str, Any] = {}
-        for path in self._candidate_secret_paths():
+        # 读与写必须同源：active_secret_path 会跟随 SECOND_BRAIN_CONFIG，
+        # 找不到再退回候选列表（兼容把密钥放别处的老部署）。
+        for path in [active_secret_path(), *self._candidate_secret_paths()]:
             if path.exists():
                 try:
                     secrets = json.loads(path.read_text(encoding="utf-8"))
@@ -652,6 +682,14 @@ class ConfigStore:
             cookie_file=Path(cookie_file) if cookie_file else None,
         )
 
+        parser = ParserApiConfig(
+            enabled=_as_bool(_get(toml_data, "parser.enabled", False), False),
+            url_template=str(_get(toml_data, "parser.url_template", "") or "").strip(),
+            auth_header=str(_get(toml_data, "parser.auth_header", "") or "").strip(),
+            auth_value=str(secrets.get("parser_api_auth") or ""),
+            timeout=_as_int(_get(toml_data, "parser.timeout", 30), 30),
+        )
+
         duplicate = DuplicateConfig(
             vector_threshold=_as_float(
                 _get(toml_data, "duplicate.vector_threshold", 0.85), 0.85
@@ -704,6 +742,7 @@ class ConfigStore:
             ai=ai,
             asr=asr,
             collect=collect,
+            parser=parser,
             duplicate=duplicate,
             notify=notify,
             maintain=maintain,

@@ -41,6 +41,21 @@ class AIKeyRequest(BaseModel):
     clear: bool = False
 
 
+class ParserApiRequest(BaseModel):
+    """第三方解析 API（可选兜底）。"""
+
+    enabled: bool = False
+    url_template: str = ""
+    auth_header: str = ""
+    auth_value: str = ""
+    clear_auth: bool = False
+    timeout: int = 30
+
+
+class ParserTestRequest(BaseModel):
+    url: str = ""
+
+
 @router.get("/ai-key")
 async def get_ai_key() -> dict[str, Any]:
     """当前 OpenAI 兼容链的配置状态（密钥脱敏）。"""
@@ -158,6 +173,13 @@ async def get_settings() -> dict[str, Any]:
             "cookie_file": str(cfg.collect.cookie_file or ""),
         },
         "adapters": all_adapters(),
+        "parser": {
+            "enabled": cfg.parser.enabled,
+            "url_template": cfg.parser.url_template,
+            "auth_header": cfg.parser.auth_header,
+            "auth_value_set": bool(cfg.parser.auth_value),
+            "timeout": cfg.parser.timeout,
+        },
         "maintain": {
             "weekly_report": cfg.maintain.weekly_report,
             "weekly_report_weekday": cfg.maintain.weekly_report_weekday,
@@ -218,6 +240,81 @@ async def set_auto_start_ollama(req: AutoFallbackRequest) -> dict[str, Any]:
     """切到 ollama / 启动时是否自动拉起本机 ollama 进程。"""
     store.set_runtime(auto_start_ollama=req.enabled)
     return {"ok": True, "auto_start_ollama": req.enabled}
+
+
+@router.get("/parser-api")
+async def get_parser_api() -> dict[str, Any]:
+    """第三方解析 API 配置（密钥只回打码值）。"""
+    from app.core.config import mask_secret
+
+    cfg = get_config().parser
+    return {
+        "enabled": cfg.enabled,
+        "url_template": cfg.url_template,
+        "auth_header": cfg.auth_header,
+        "auth_value_masked": mask_secret(cfg.auth_value),
+        "auth_value_set": bool(cfg.auth_value),
+        "timeout": cfg.timeout,
+        "ready": bool(cfg.enabled and cfg.url_template.strip()),
+    }
+
+
+@router.post("/parser-api")
+async def set_parser_api(req: ParserApiRequest) -> dict[str, Any]:
+    """保存第三方解析配置。
+
+    密钥写 secrets.json，其余写 config.toml —— 和 ark key 同一套规矩，
+    避免把密钥混进可能被分享/提交的配置文件。
+    """
+    from app.core.config import active_config_path, save_secret, set_toml_value
+
+    toml_path = active_config_path()
+
+    # 只允许 http(s)：URL 模板会被直接请求，别让 file:// 之类进来
+    if req.url_template.strip():
+        low = req.url_template.strip().lower()
+        if not (low.startswith("http://") or low.startswith("https://")):
+            raise HTTPException(status_code=400, detail="接口地址必须是 http(s) 开头")
+
+    set_toml_value(toml_path, "parser", "enabled", "true" if req.enabled else "false")
+    set_toml_value(toml_path, "parser", "url_template", req.url_template.strip())
+    set_toml_value(toml_path, "parser", "auth_header", req.auth_header.strip())
+    set_toml_value(toml_path, "parser", "timeout", str(max(5, min(req.timeout, 120))))
+
+    if req.clear_auth:
+        save_secret("parser_api_auth", "")
+    elif req.auth_value.strip():
+        save_secret("parser_api_auth", req.auth_value.strip())
+
+    store.reload()
+    from app.core.config import mask_secret
+
+    cfg = get_config().parser
+    return {
+        "ok": True,
+        "enabled": cfg.enabled,
+        "url_template": cfg.url_template,
+        "auth_header": cfg.auth_header,
+        "auth_value_masked": mask_secret(cfg.auth_value),
+        "auth_value_set": bool(cfg.auth_value),
+        "timeout": cfg.timeout,
+        "ready": bool(cfg.enabled and cfg.url_template.strip()),
+    }
+
+
+@router.post("/parser-api/test")
+async def test_parser_api(req: ParserTestRequest) -> dict[str, Any]:
+    """用一条真实链接试解析，不写库。"""
+    from app.services import parser_api
+
+    target = req.url.strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="请填一条要测试的链接")
+    if not parser_api.get_parser_config().url_template.strip():
+        raise HTTPException(status_code=400, detail="先填接口地址再测试")
+    if not parser_api.get_parser_config().enabled:
+        raise HTTPException(status_code=400, detail="先打开开关再测试")
+    return parser_api.probe(target)
 
 
 @router.post("/lan")

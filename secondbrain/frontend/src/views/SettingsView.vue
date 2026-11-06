@@ -9,6 +9,7 @@
 import { ref, computed } from 'vue'
 import { provideSettings } from '../composables/useSettings'
 import SettingsAi from './settings/SettingsAi.vue'
+import SettingsCollect from './settings/SettingsCollect.vue'
 import SettingsStorage from './settings/SettingsStorage.vue'
 import SettingsSystem from './settings/SettingsSystem.vue'
 
@@ -38,6 +39,13 @@ const { settings } = provideSettings()
         </button>
         <button
           class="tab"
+          :class="{ active: localGroup === 'collect' }"
+          @click="localGroup = 'collect'"
+        >
+          采集
+        </button>
+        <button
+          class="tab"
           :class="{ active: localGroup === 'storage' }"
           @click="localGroup = 'storage'"
         >
@@ -53,6 +61,7 @@ const { settings } = provideSettings()
       </div>
 
       <SettingsAi v-if="activeGroup === 'ai'" />
+      <SettingsCollect v-else-if="activeGroup === 'collect'" />
       <SettingsStorage v-else-if="activeGroup === 'storage'" />
       <SettingsSystem v-else-if="activeGroup === 'system'" />
     </template>

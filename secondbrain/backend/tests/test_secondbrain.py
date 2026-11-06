@@ -3169,3 +3169,152 @@ class TestTrafilaturaFallback:
 
         assert text == ""
         assert any("trafilatura" in r.message for r in caplog.records)
+
+
+class TestParserApi:
+    """v0.7.3：第三方解析 API 兜底。
+
+    背景：抖音 / 快手 / 小红书不给匿名请求返回正文，本地适配器只能拿到
+    标题和摘要。用户问「能不能接一个类似橙子去水印的 API」—— 可以，但必须
+    是可选的、默认关闭的、只在失败时才用的，否则就成了偷偷把链接外发。
+    """
+
+    def _cfg(self, **kw):
+        from app.core.config import ParserApiConfig
+
+        base = {
+            "enabled": True,
+            "url_template": "https://api.example.com/parse?url={url}",
+            "auth_header": "",
+            "auth_value": "",
+            "timeout": 10,
+        }
+        base.update(kw)
+        return ParserApiConfig(**base)
+
+    # -- URL 组装 ---------------------------------------------------------
+    def test_url_template_with_placeholder(self, monkeypatch):
+        from app.services import parser_api
+
+        monkeypatch.setattr(parser_api, "get_parser_config", lambda: self._cfg())
+        url = parser_api.build_request_url("https://v.douyin.com/abc/")
+        # 占位符必须被 URL 编码，否则 query 里的 & 会把参数切碎
+        assert "https%3A%2F%2Fv.douyin.com%2Fabc%2F" in url
+        assert url.startswith("https://api.example.com/parse?url=")
+
+    def test_url_without_placeholder_gets_query(self, monkeypatch):
+        from app.services import parser_api
+
+        monkeypatch.setattr(
+            parser_api, "get_parser_config", lambda: self._cfg(url_template="https://x.com/p")
+        )
+        assert parser_api.build_request_url("https://a.com/v").startswith(
+            "https://x.com/p?url="
+        )
+
+    def test_url_with_existing_query_uses_ampersand(self, monkeypatch):
+        from app.services import parser_api
+
+        monkeypatch.setattr(
+            parser_api,
+            "get_parser_config",
+            lambda: self._cfg(url_template="https://x.com/p?key=1"),
+        )
+        assert "&url=" in parser_api.build_request_url("https://a.com/v")
+
+    # -- 响应归一化 -------------------------------------------------------
+    def test_normalize_common_wrapper(self):
+        """多数聚合服务是 {code:200, data:{...}} 这种壳。"""
+        from app.services import parser_api
+
+        payload = {
+            "code": 200,
+            "msg": "ok",
+            "data": {
+                "title": "这是一个标题",
+                "desc": "这是正文内容，长度足够当作素材使用。",
+                "author": {"nickname": "某某"},
+            },
+        }
+        title, text, extra = parser_api.normalize(payload)
+        assert title == "这是一个标题"
+        assert "正文内容" in text
+        assert extra["author"] == "某某"
+
+    def test_normalize_flat_and_nested_lists(self):
+        from app.services import parser_api
+
+        payload = {
+            "title": "标题A",
+            "content": "正文A，够长。",
+            "tags": ["#话题1", "#话题2"],
+            "video_url": "https://cdn.example.com/a.mp4",
+        }
+        title, text, extra = parser_api.normalize(payload)
+        assert title == "标题A"
+        assert "正文A" in text
+        assert extra["media"] == ["https://cdn.example.com/a.mp4"]
+
+    def test_normalize_dedupes_contained_text(self):
+        """desc 常常是 content 的前半段，重复入库会让 AI 摘要变啰嗦。"""
+        from app.services import parser_api
+
+        payload = {"desc": "短简介", "content": "短简介加上后面还有一大段补充说明"}
+        _, text, _ = parser_api.normalize(payload)
+        assert text.count("短简介") == 1, text
+
+    def test_normalize_empty_payload(self):
+        from app.services import parser_api
+
+        title, text, _ = parser_api.normalize({"code": 0, "data": []})
+        assert title == ""
+        assert text == ""
+
+    # -- 开关与失败路径 ---------------------------------------------------
+    def test_not_enabled_means_unavailable(self, monkeypatch):
+        from app.services import parser_api
+
+        monkeypatch.setattr(
+            parser_api, "get_parser_config", lambda: self._cfg(enabled=False)
+        )
+        assert parser_api.available() is False
+        res = parser_api.parse("https://a.com/v")
+        assert res.ok is False
+        assert "未启用" in res.error
+
+    def test_enabled_but_no_url_is_unavailable(self, monkeypatch):
+        from app.services import parser_api
+
+        monkeypatch.setattr(parser_api, "get_parser_config", lambda: self._cfg(url_template=""))
+        assert parser_api.available() is False
+
+    def test_pipeline_returns_none_when_disabled(self, monkeypatch):
+        """没开就必须返回 None —— 调用方靠它区分「没试」和「试了失败」。"""
+        from app.services import parser_api
+        from app.workers import pipeline
+
+        monkeypatch.setattr(
+            parser_api, "get_parser_config", lambda: self._cfg(enabled=False)
+        )
+        assert pipeline._try_parser_api("https://a.com/v") is None
+
+    def test_pipeline_returns_result_when_enabled(self, monkeypatch):
+        from app.adapters.base import ExtractResult
+        from app.services import parser_api
+        from app.workers import pipeline
+
+        monkeypatch.setattr(parser_api, "get_parser_config", lambda: self._cfg())
+        monkeypatch.setattr(
+            parser_api,
+            "parse",
+            lambda url: ExtractResult(ok=True, title="t", text="x" * 100, extractor="parser_api"),
+        )
+        res = pipeline._try_parser_api("https://a.com/v")
+        assert res is not None and res.ok
+
+    def test_http_403_message_mentions_auth(self, monkeypatch):
+        from app.services import parser_api
+
+        assert "鉴权" in parser_api._error_for_status(403)
+        assert "404" in parser_api._error_for_status(404)
+        assert "限流" in parser_api._error_for_status(429)

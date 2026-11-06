@@ -76,6 +76,25 @@ batch_limit = 100
 # B站 cookie 文件（Netscape 格式或含 SESSDATA 的纯文本），留空 = 不用 cookie
 cookie_file = ""
 
+# 第三方解析 API（可选兜底）
+#
+# 抖音 / 快手 / 小红书不给未登录请求返回作品正文，本地适配器只能拿到标题
+# 和摘要。想拿到完整文案，可以在这里接一个聚合解析服务。
+#
+# ⚠️ 开启后，抓取失败的链接会被发送到你填的这个服务。
+#    不想外发就保持 enabled = false（默认）。
+#
+# url_template 里用 {url} 表示目标链接（自动 URL 编码）；不写占位符时
+# 会自动追加 ?url=<链接>。需要把 key 放 query 就直接写进模板：
+#   url_template = "https://api.example.com/parse?key=你的key&url={url}"
+# 需要放 header 则填 auth_header / auth_value（密钥写 secrets.json，
+# 在设置页填即可，不要写在 config.toml 里）。
+[parser]
+enabled = false
+url_template = ""
+auth_header = ""
+timeout = 30
+
 [duplicate]
 vector_threshold = 0.85
 

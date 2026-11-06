@@ -297,6 +297,9 @@ export const settingsApi = {
   neverSleep: () => api.post('/api/settings/power/never-sleep'),
   getAiKey: () => api.get('/api/settings/ai-key'),
   saveAiKey: (payload) => api.post('/api/settings/ai-key', payload),
+  getParserApi: () => api.get('/api/settings/parser-api'),
+  saveParserApi: (payload) => api.post('/api/settings/parser-api', payload),
+  testParserApi: (url) => api.post('/api/settings/parser-api/test', { url }),
   shutdown: () => api.post('/api/settings/shutdown')
 }
 

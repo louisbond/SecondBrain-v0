@@ -40,6 +40,22 @@ def _read_cookie() -> str | None:
     return parse_cookie_file(str(cfg.collect.cookie_file))
 
 
+def _try_parser_api(url: str) -> Any:
+    """第三方解析兜底。未启用时返回 None（调用方据此区分「没试」和「试了失败」）。"""
+    try:
+        from app.services import parser_api
+
+        if not parser_api.available():
+            return None
+        return parser_api.parse(url)
+    except Exception as exc:  # noqa: BLE001
+        from app.adapters.base import ExtractResult
+
+        return ExtractResult(
+            ok=False, extractor="parser_api", error=f"第三方解析异常：{exc}"[:200]
+        )
+
+
 def handle_extract(item_id: int) -> None:
     """抓取任务。"""
     ingest = get_ingest_service()
@@ -79,14 +95,24 @@ def handle_extract(item_id: int) -> None:
     _progress(item_id, 0.35)
 
     if not result.ok:
-        ingest.transition(
-            item_id,
-            "extract_failed",
-            error_reason="extract_failed",
-            error_detail=result.error or "抓取失败",
-        )
-        _notify_failed(item, result.error or "抓取失败")
-        return
+        primary_error = result.error or "抓取失败"
+        # 平台不给匿名请求返回正文时，可选地交给第三方解析兜底。
+        # 没开启就什么都不做 —— 不能悄悄把用户链接发给外部服务。
+        fallback = _try_parser_api(url)
+        if fallback is not None and fallback.ok:
+            result = fallback
+        else:
+            detail = primary_error
+            if fallback is not None and fallback.error:
+                detail = f"{primary_error}；第三方解析：{fallback.error}"
+            ingest.transition(
+                item_id,
+                "extract_failed",
+                error_reason="extract_failed",
+                error_detail=detail,
+            )
+            _notify_failed(item, detail)
+            return
 
     # 需要 ASR：先落 A 层（不含字幕），再排 asr job
     if result.needs_asr:
