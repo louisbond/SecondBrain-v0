@@ -6,6 +6,8 @@ secondbrain/build/
 secondbrain/dist/
 # 按版本打的包（dist-release / dist-0.7.1 / dist-0.7.1b …）
 secondbrain/dist-*/
+# PyInstaller 的工作目录（每次换 --workpath 避免撞安全删除拦截）
+secondbrain/backend/build*/
 secondbrain/data/
 secondbrain/bin/
 __pycache__/

@@ -86,6 +86,23 @@ example_toml = PROJECT_ROOT / "config" / "config.example.toml"
 if example_toml.exists():
     datas.append((str(example_toml), "config"))
 
+# trafilatura 的运行时配置（v0.7.2 修）
+#
+# 坑：`trafilatura.settings.use_config()` 是 `configparser.read(<pkg>/settings.cfg)`，
+# 而 PyInstaller 只把 .py 打进 PYZ，**数据文件不会自动收集**。
+# 结果：打包后 config 是空的 → `extract()` 里读 MIN_EXTRACTED_SIZE 直接抛
+# NoOptionError → 适配器吞掉异常 → 正文抽取**静默降级成 meta 摘要**。
+# 源码运行时完全正常，只有打包版坏，属于最容易漏掉的那类问题。
+try:
+    import trafilatura as _trafilatura
+
+    _traf_cfg = Path(_trafilatura.__file__).parent / "settings.cfg"
+    if _traf_cfg.exists():
+        datas.append((str(_traf_cfg), "trafilatura"))
+        print(f"[spec] 已包含 trafilatura settings.cfg: {_traf_cfg}")
+except Exception as _exc:  # noqa: BLE001
+    print(f"[spec] 警告：未能定位 trafilatura settings.cfg（{_exc}）")
+
 # faster-whisper 的运行时资源（v31 修）
 #
 # 坑：silero VAD 模型（silero_vad_v6.onnx）在源码运行时由

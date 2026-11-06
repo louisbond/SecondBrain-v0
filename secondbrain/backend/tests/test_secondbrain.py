@@ -3118,3 +3118,54 @@ class TestEmbeddingOffline:
         vector = svc._hash_encode("短视频文案分析")
         assert len(vector) == svc.cfg.ai.embedding.dim
         assert any(v != 0 for v in vector)
+
+
+class TestTrafilaturaFallback:
+    """v0.7.2：trafilatura 缺 settings.cfg 时必须能退回默认配置。
+
+    回归背景：PyInstaller 只收集 .py，不收 `trafilatura/settings.cfg`。
+    `use_config()` 读到空配置后 `extract(config=...)` 抛 NoOptionError，
+    而旧的 `except: return "", ""` 把它吞了 —— 打包版正文抽取**永远是空的**，
+    静默退化成 meta 摘要，源码运行却完全正常。
+    """
+
+    def test_retries_without_config_when_config_broken(self, monkeypatch):
+        import trafilatura
+
+        from app.adapters import web as web_mod
+
+        calls: list[bool] = []
+
+        def fake_extract(html, **kwargs):
+            calls.append("config" in kwargs)
+            if "config" in kwargs:
+                raise KeyError("MIN_EXTRACTED_SIZE")  # 模拟空配置
+            return "正文" * 120
+
+        monkeypatch.setattr(trafilatura, "fetch_url", lambda url: "<html>x</html>")
+        monkeypatch.setattr(trafilatura, "extract", fake_extract)
+        monkeypatch.setattr(
+            trafilatura, "extract_metadata", lambda html: type("M", (), {"title": "标题"})()
+        )
+
+        text, title = web_mod.WebAdapter()._extract_trafilatura("https://example.com/a")
+        assert calls == [True, False], calls
+        assert len(text) >= 200
+        assert title == "标题"
+
+    def test_exceptions_are_logged_not_swallowed(self, monkeypatch, caplog):
+        import trafilatura
+
+        from app.adapters import web as web_mod
+
+        def boom(html, **kwargs):
+            raise RuntimeError("抽取炸了")
+
+        monkeypatch.setattr(trafilatura, "fetch_url", lambda url: "<html>x</html>")
+        monkeypatch.setattr(trafilatura, "extract", boom)
+
+        with caplog.at_level("WARNING"):
+            text, _ = web_mod.WebAdapter()._extract_trafilatura("https://example.com/b")
+
+        assert text == ""
+        assert any("trafilatura" in r.message for r in caplog.records)

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from html import unescape as _unescape
 
@@ -16,6 +17,8 @@ import httpx
 
 from app.adapters.base import Adapter, ExtractResult, register
 from app.core.http import make_client
+
+logger = logging.getLogger(__name__)
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -138,23 +141,66 @@ class WebAdapter(Adapter):
         return title, desc
 
     def _extract_trafilatura(self, url: str) -> tuple[str, str]:
+        """trafilatura 正文抽取。
+
+        两个坑：
+
+        1. `use_config()` 读的是包内 `settings.cfg`。PyInstaller **不会**自动
+           收集这个数据文件（只收 .py），打包后 config 为空 →
+           `extract()` 读 `MIN_EXTRACTED_SIZE` 抛 NoOptionError。
+           所以这里先用带 config 的调用，失败再退回默认配置。
+        2. 异常绝不能静默吞掉。之前 `except: return "", ""` 让"打包版正文
+           永远退化成 meta 摘要"这个问题完全不可观测，只能靠猜。
+        """
         try:
             import trafilatura
             from trafilatura.settings import use_config
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("trafilatura 不可用：%s", exc)
+            return "", ""
 
+        try:
+            downloaded = trafilatura.fetch_url(url)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("trafilatura 抓取失败 %s：%s", url, exc)
+            return "", ""
+        if not downloaded:
+            logger.info("trafilatura 未取到内容：%s", url)
+            return "", ""
+
+        text: str = ""
+        try:
             config = use_config()
             config.set("DEFAULT", "EXTRACTION_TIMEOUT", "0")
-            downloaded = trafilatura.fetch_url(url)
-            if not downloaded:
-                return "", ""
-            text = trafilatura.extract(
-                downloaded, config=config, include_links=False, include_tables=True
+            text = (
+                trafilatura.extract(
+                    downloaded, config=config, include_links=False, include_tables=True
+                )
+                or ""
             )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("trafilatura 抽取失败（带 config）：%s", exc)
+            text = ""
+
+        if not text:
+            # 打包缺 settings.cfg 时走这里：默认配置照样能抽出正文
+            try:
+                text = (
+                    trafilatura.extract(
+                        downloaded, include_links=False, include_tables=True
+                    )
+                    or ""
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("trafilatura 抽取失败（默认 config）：%s", exc)
+                text = ""
+
+        try:
             meta = trafilatura.extract_metadata(downloaded)
             title = str(getattr(meta, "title", "") or "")
-            return (text or "").strip(), title
-        except Exception:
-            return "", ""
+        except Exception:  # noqa: BLE001
+            title = ""
+        return (text or "").strip(), title
 
     def _extract_playwright(self, url: str) -> tuple[str, str]:
         """Playwright 兜底（未安装则跳过）。"""
