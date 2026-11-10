@@ -1,0 +1,146 @@
+# SecondBrain 配置模板（首次运行会自动复制为 config.toml）
+#
+# 路径规则：
+# - **留空 = 用程序默认值（推荐）**。默认配置、数据库、日志、缓存和
+#   默认笔记库都放在用户目录 ~/.secondbrain/，与 exe 装在哪无关，
+#   因此装在 C:\Program Files 这类只读位置也能正常运行。
+# - 绝对路径直接使用（例如把笔记库指向你自己的 Obsidian 库）。
+# - 相对路径相对程序所在目录。
+#
+# 首次使用：打开「设置 → 采集与存储 → Vault 目录」选你的 Obsidian 库；
+# 不选也能用，程序会在用户目录里建一个默认库。
+# API Key 不写在这里，通过「设置 → AI 与密钥」保存到 secrets.json。
+
+[vault]
+# 留空 = ~/.secondbrain/vault（程序自动创建）
+path = ""
+inbox_dir = "01_Inbox"
+processed_dir = "02_Processed"
+notes_dir = "03_Notes"
+assets_dir = "assets"
+archive_dir = "99_Archive"
+reports_dir = "_reports"
+
+[storage]
+# 留空 = ~/.secondbrain/data
+data_dir = ""
+db_path = ""
+# 留空 = 程序内置 bin/（打包版随 exe 提供 yt-dlp / ffmpeg）
+bin_dir = ""
+prompts_dir = ""
+
+[web]
+host = "127.0.0.1"
+port = 7688                # 被占自动 +1
+allow_lan = false          # true 时强制 token
+
+[ui]
+editor = "vditor"
+
+[ai]
+provider = "openai_compat" # workbuddy / ollama / openai_compat
+auto_fallback = true
+fallback_threshold = 3
+# 切到 ollama（或启动时主链就是 ollama）发现本机没在监听，就代为拉起 ollama 进程。
+# 只对回环地址生效，60 秒内最多尝试一次。
+auto_start_ollama = true
+
+[ai.ollama]
+base_url = "http://127.0.0.1:11434/v1"
+model = "qwen2.5:7b-instruct"
+timeout = 300
+
+[ai.openai_compat]
+# 火山方舟等 OpenAI 兼容端点；API Key 写在 secrets.json 的 ark_api_key
+base_url = "https://ark.cn-beijing.volces.com/api/v3"
+model = "doubao-seed-1-6-flash-250828"
+timeout = 180
+
+[ai.embedding]
+# 本地 ONNX 编码器（torch-free）。把模型目录填成实际路径即可离线启用；
+# 目录里需要 tokenizer.json + config.json + model_quantized.onnx。
+# 留空 = 退化为关键词检索（hash 向量），语义召回不可用。
+model = "bge-small-zh-v1.5"
+dim = 512
+batch_size = 8
+model_dir = ""
+
+[asr]
+engine = "faster-whisper"
+model_size = "small"
+compute = "int8"
+concurrency = 1
+# 本地模型目录（离线加载）；留空则从 HuggingFace 下载
+model_dir = ""
+
+[media]
+# 音频归档目录（与 cache 分开：清缓存不会误删归档）
+# 留空 = <data_dir>/media
+dir = ""
+# 音频码率：128k 能听清语气、停顿、情绪；64k 更省但齿音会糊
+audio_bitrate = "128k"
+audio_sample_rate = 44100
+# 处理完是否保留原视频。默认不留（只留 MP3，省 95% 空间）
+keep_video = false
+# 单个媒体文件上限（MB）：本地上传和视频直链下载共用
+# 手机拍的 20 分钟 1080p 约 400MB；再大应先剪辑
+max_file_mb = 500
+
+[ocr]
+# 画面文字识别（ASR 的兜底，不是主路径）
+enabled = true
+# asr_empty = 只有 ASR 没转出东西才跑（推荐）
+# always    = 每条都跑（慢，但能补 PPT/书页里的字）
+# off       = 完全关掉
+auto_trigger = "asr_empty"
+# mobile = PP-OCRv5/v6 移动版（快，够用）；server = 高精度大模型（慢 3~5 倍）
+model_tier = "mobile"
+sample_seconds = 2.0
+sample_width = 1280
+# 至少几帧都说同一句话才采信（多帧投票，压掉随机错字）
+vote_min_frames = 2
+# 有本地 ollama 时用它修 OCR 错字、补标点；没在跑就自动跳过
+llm_fix = true
+# 这些平台自带官方字幕，不需要 OCR
+skip_platforms = "bilibili"
+
+[collect]
+min_chars = 200
+web_timeout = 20
+batch_limit = 100
+# B站 cookie 文件（Netscape 格式或含 SESSDATA 的纯文本），留空 = 不用 cookie
+cookie_file = ""
+
+# 第三方解析 API（可选兜底）
+#
+# 抖音 / 快手 / 小红书不给未登录请求返回作品正文，本地适配器只能拿到标题
+# 和摘要。想拿到完整文案，可以在这里接一个聚合解析服务。
+#
+# ⚠️ 开启后，抓取失败的链接会被发送到你填的这个服务。
+#    不想外发就保持 enabled = false（默认）。
+#
+# url_template 里用 {url} 表示目标链接（自动 URL 编码）；不写占位符时
+# 会自动追加 ?url=<链接>。需要把 key 放 query 就直接写进模板：
+#   url_template = "https://api.example.com/parse?key=你的key&url={url}"
+# 需要放 header 则填 auth_header / auth_value（密钥写 secrets.json，
+# 在设置页填即可，不要写在 config.toml 里）。
+[parser]
+enabled = false
+url_template = ""
+auth_header = ""
+timeout = 30
+
+[duplicate]
+# 「疑似重复」提示的向量相似度阈值，需与模型打分分布匹配。
+# bge-small-zh：同主题 ~0.62、无关 ~0.32 → 取 0.75；bge-m3 分布偏高，0.85 才合适。
+# 只是提示，不会自动拦截入库。
+vector_threshold = 0.75
+
+[notify]
+windows_toast = true
+
+[maintain]
+weekly_report = true
+weekly_report_weekday = 6
+weekly_report_hour = 21
+recap_sample = "weighted_unreferenced"

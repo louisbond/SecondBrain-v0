@@ -1,0 +1,47 @@
+# SecondBrain v0.7.0 — Backend dependencies
+# P0 核心
+fastapi>=0.110
+uvicorn[standard]>=0.27
+httpx>=0.26
+pydantic>=2.5
+python-multipart>=0.0.9
+# TLS 校验走系统证书存储（交叉签名证书链，如火山方舟，certifi 会误判为链断）
+truststore>=0.10.0
+
+# P0 中文分词（FTS5 双列写入；缺失时自动降级 bigram_cjk）
+jieba>=0.42.1
+
+# P3/P4 采集与转写
+yt-dlp>=2024.4.9
+trafilatura>=1.6
+
+# P4 ASR（CPU int8）
+# 注：PyAV >= 14 移除了 av.open() 的 metadata_errors 参数，而 faster-whisper 1.2.x
+# 仍在传它——已在 app/services/audio_compat.py 里做兼容处理。
+faster-whisper>=1.2.1
+
+# P4b 画面文字识别（OCR，ASR 的兜底）
+# rapidocr 内置 PP-OCRv5/v6 mobile 模型（约 16MB），走 onnxruntime 推理，
+# 不需要 paddlepaddle（那个几百 MB，打包基本不可行）。
+# 模型文件必须随包分发，否则首次识别会联网下载。
+rapidocr>=3.0
+opencv-python-headless>=4.10
+pillow>=10.0
+
+# P9 embedding（CPU）
+onnxruntime>=1.17
+transformers>=4.38
+sentencepiece>=0.2
+
+# 可选：模型下载（国内网络可从 ModelScope 拉 faster-whisper 权重）
+# modelscope>=1.20
+
+# P10 通知
+winotify>=1.1.0
+
+# P10 分发
+pyinstaller>=6.3
+
+# 开发
+pytest>=8.0
+pytest-asyncio>=0.23

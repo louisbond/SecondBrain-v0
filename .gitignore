@@ -1,0 +1,50 @@
+# 构建产物
+secondbrain/frontend/dist/
+secondbrain/frontend/node_modules/
+secondbrain/frontend/public/vditor/
+secondbrain/build/
+secondbrain/dist/
+secondbrain/data/
+secondbrain/bin/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 用户真实数据与配置（含密钥，绝不入库）
+secondbrain/config/config.toml
+secondbrain/config/secrets.json
+
+# v39：脚本运行时用的临时"家目录"（含真实 db / wal / log / config）。
+# 之前只挡了顶层 secondbrain/data/，这个嵌套路径漏了，
+# 结果 real secondbrain.db + wal + app.log 被提交进了仓库。
+# 仓库里绝不能出现用户数据 —— 密钥、笔记内容、日志都不该外流。
+secondbrain/backend/scripts/_desk_home/
+secondbrain/**/data/
+secondbrain/**/data/**/*.db
+secondbrain/**/data/**/*.db-shm
+secondbrain/**/data/**/*.db-wal
+secondbrain/**/logs/
+
+# Edge/浏览器调试残留
+_edge_ux/
+**/Default/
+
+# 本地临时脚本
+secondbrain/scripts/_*.py
+
+# v43：公开仓库只保留用户/开发者文档与代码；开发过程笔记留在本地，不入库
+# （注意：只是移出 git 索引，本地文件夹不要删）
+.workbuddy/
+HANDOVER.md
+START-HERE.md
+
+# PyInstaller 构建缓存（含 --clean 时用的临时 workpath）
+secondbrain/build*/
+
+# 本地备份/临时文件（调试残留，不入库）
+*.bak
+*.bak-*
+*.orig
+
+# CI 配置不进公开仓库（旧 self-hosted runner 专用）
+.github/workflows/

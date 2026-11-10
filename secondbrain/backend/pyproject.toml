@@ -1,0 +1,75 @@
+# SecondBrain 后端工具配置（v39）
+#
+# 这里只放**工具**配置，不放依赖（依赖在 requirements.txt）。
+# 目的是让 lint / format 的行为**写进仓库**，而不是每个人本地各配一套。
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+# 构建产物与缓存目录
+exclude = ["build", "dist", ".pytest_cache", "__pycache__", "data"]
+
+# pytest-asyncio 2.x 起要求显式声明异步 fixture 的事件循环作用域。
+# 不写就每次跑测试刷一条 DeprecationWarning，且未来版本默认值会变
+# —— 把当前行为（function 级）写死，避免哪天升级后测试莫名其妙串味。
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff.lint]
+# E/W pycodestyle · F pyflakes · B bugbear · C4 comprehensions
+# SIM simplify · UP pyupgrade · I isort
+select = ["E", "F", "W", "B", "C4", "SIM", "UP", "I"]
+
+ignore = [
+    # 行宽：交给 formatter 管，不卡 CI（存量 118 处，改了 diff 全是噪音）
+    "E501",
+    # FastAPI 的 Depends()/Query() 在默认值里调用是官方写法，不是 bug
+    "B008",
+    # try/except: pass → contextlib.suppress：纯风格，存量 15 处，不值得全改
+    "SIM105",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试里会有"故意 import 却不直接用"的模块（靠插件/fixture 生效）
+"tests/*" = ["F401"]
+# 脚本目录同理
+"scripts/*" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+combine-as-imports = true
+
+
+# ---------------------------------------------------------------------------
+# 类型检查（v42）
+#
+# 项目是纯 Python + 类型标注，没上 strict —— strict 会把存量几百处隐式 Any
+# 全翻出来，噪音淹没真问题。这里的规则集只做一件事：
+#   **把"运行时才会炸"的类型错误提前到 CI**。
+# 实测首次接入抓到 4 个真 bug（不存在的 self.db、多余的 .fetchall()、
+# ClassVar 被实例遮蔽、None 直接迭代），全部已修。
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.13"
+files = ["app"]
+# 第三方库（jieba / yt-dlp / faster-whisper / onnxruntime / winotify …）
+# 没有类型存根；它们都在函数内惰性 import，不值得为它们写 stub。
+ignore_missing_imports = true
+# 不开 warn_unused_ignores：代码里有一批 `# type: ignore` 是给
+# *没装库* 的环境写的（webview / winotify / faster_whisper …）。
+# 装了库或开了 ignore_missing_imports 后它们就"多余"，
+# 于是同一份代码在 CI 与本机报不同的错 —— 环境相关的告警不值得看。
+warn_redundant_casts = true
+strict_equality = true
+exclude = ["build", "dist", "data", "scripts", "tests"]
+
+
+# ---------------------------------------------------------------------------
+# 类型检查（v42）
+#
+# 项目是纯 Python + 类型标注，没上 strict —— strict 会把存量几百处隐式 Any
+# 全翻出来，噪音淹没真问题。这里的规则集只做一件事：
+#   **把"运行时才会炸"的类型错误提前到 CI**。
+# 实测首次接入抓到 4 个真 bug（不存在的 self.db、多余的 .fetchall()、
+# ClassVar 被实例遮蔽、None 直接迭代），全部已修。
+# ---------------------------------------------------------------------------
