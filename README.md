@@ -10,6 +10,14 @@
 `127.0.0.1:7688`。**Markdown 文件是唯一真相源**，SQLite 只是可随时重建的索引 ——
 就算不用这个软件，你的笔记用 Obsidian 照样能打开。
 
+![使用流程](secondbrain/docs/assets/release/v0.11.6/flow.gif)
+
+| 采集 | 加工 |
+| --- | --- |
+| ![采集](secondbrain/docs/assets/release/v0.11.6/01-paste-link.png) | ![加工](secondbrain/docs/assets/release/v0.11.6/02-review.png) |
+| **阅读（AI 摘要 + 个人手稿）** | **经验树** |
+| ![阅读](secondbrain/docs/assets/release/v0.11.6/03-note.png) | ![图谱](secondbrain/docs/assets/release/v0.11.6/04-graph.png) |
+
 ---
 
 ## 下载与运行（Windows）
