@@ -10,9 +10,9 @@
 `127.0.0.1:7688`。**Markdown 文件是唯一真相源**，SQLite 只是可随时重建的索引 ——
 就算不用这个软件，你的笔记用 Obsidian 照样能打开。
 
-[![观看 39 秒真实操作演示](https://raw.githubusercontent.com/louisbond/SecondBrain-v0/main/secondbrain/docs/assets/release/v0.11.6/demo-poster.png)](https://cdn.jsdelivr.net/gh/louisbond/SecondBrain-v0@e980866/secondbrain/docs/assets/release/v0.11.6/demo.mp4)
+[![观看 2 分 13 秒真实操作演示](https://raw.githubusercontent.com/louisbond/SecondBrain-v0/main/secondbrain/docs/assets/release/v0.11.6/demo-poster.png)](https://cdn.jsdelivr.net/gh/louisbond/SecondBrain-v0@e980866/secondbrain/docs/assets/release/v0.11.6/demo.mp4)
 
-<sub>▶ 点封面播放（39 秒，无声，约 1 MB）· 真实鼠标操作录屏，未做拼接 · [下载 MP4](https://github.com/louisbond/SecondBrain-v0/blob/main/secondbrain/docs/assets/release/v0.11.6/demo.mp4)</sub>
+<sub>▶ 点封面播放（2 分 13 秒，无声，约 6.7 MB）· 真实鼠标操作录屏，未做拼接 · [下载 MP4](https://github.com/louisbond/SecondBrain-v0/blob/main/secondbrain/docs/assets/release/v0.11.6/demo.mp4)</sub>
 
 | 采集 | 加工 |
 | --- | --- |
