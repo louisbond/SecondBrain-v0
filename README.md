@@ -10,9 +10,9 @@
 `127.0.0.1:7688`。**Markdown 文件是唯一真相源**，SQLite 只是可随时重建的索引 ——
 就算不用这个软件，你的笔记用 Obsidian 照样能打开。
 
-[![6 分 29 秒 · 1080p 项目讲解](https://raw.githubusercontent.com/louisbond/SecondBrain-v0/main/secondbrain/docs/assets/release/v0.11.6/explainer-poster.png)](https://cdn.jsdelivr.net/gh/louisbond/SecondBrain-v0@0410e55/secondbrain/docs/assets/release/v0.11.6/explainer.mp4)
+[![6 分 29 秒 · 1080p 项目讲解](https://raw.githubusercontent.com/louisbond/SecondBrain-v0/main/secondbrain/docs/assets/release/v0.11.6/explainer-poster.png)](https://louisbond.github.io/SecondBrain-v0/explainer.mp4)
 
-<sub>▶ 6 分 29 秒 · 1080p <b>项目讲解</b>（3Blue1Brown 风格）· [下载 MP4](https://github.com/louisbond/SecondBrain-v0/blob/main/secondbrain/docs/assets/release/v0.11.6/explainer.mp4) · 也看 [2 分 13 秒真实操作录屏](https://cdn.jsdelivr.net/gh/louisbond/SecondBrain-v0@0410e55/secondbrain/docs/assets/release/v0.11.6/demo.mp4)</sub>
+<sub>▶ 6 分 29 秒 · 1080p <b>项目讲解</b>（3Blue1Brown 风格）· [下载 MP4](https://github.com/louisbond/SecondBrain-v0/blob/main/secondbrain/docs/assets/release/v0.11.6/explainer.mp4) · 也看 [2 分 13 秒真实操作录屏](https://louisbond.github.io/SecondBrain-v0/demo.mp4)</sub>
 
 | 采集 | 加工 |
 | --- | --- |
