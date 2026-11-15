@@ -10,9 +10,9 @@
 `127.0.0.1:7688`。**Markdown 文件是唯一真相源**，SQLite 只是可随时重建的索引 ——
 就算不用这个软件，你的笔记用 Obsidian 照样能打开。
 
-[![观看 2 分 13 秒真实操作演示](https://raw.githubusercontent.com/louisbond/SecondBrain-v0/main/secondbrain/docs/assets/release/v0.11.6/demo-poster.png)](https://cdn.jsdelivr.net/gh/louisbond/SecondBrain-v0@cd384e1/secondbrain/docs/assets/release/v0.11.6/demo.mp4)
+[![3 分 10 秒项目介绍与教学](https://raw.githubusercontent.com/louisbond/SecondBrain-v0/main/secondbrain/docs/assets/release/v0.11.6/explainer-poster.png)](https://cdn.jsdelivr.net/gh/louisbond/SecondBrain-v0@main/secondbrain/docs/assets/release/v0.11.6/explainer.mp4)
 
-<sub>▶ 点封面播放（2 分 13 秒，无声，约 6.7 MB）· 真实鼠标操作录屏，未做拼接 · [下载 MP4](https://github.com/louisbond/SecondBrain-v0/blob/main/secondbrain/docs/assets/release/v0.11.6/demo.mp4)</sub>
+<sub>▶ 3 分 10 秒 <b>项目介绍与教学</b>（3Blue1Brown 风格）· [下载 MP4](https://github.com/louisbond/SecondBrain-v0/blob/main/secondbrain/docs/assets/release/v0.11.6/explainer.mp4) · 也看 [2 分 13 秒真实操作录屏](https://cdn.jsdelivr.net/gh/louisbond/SecondBrain-v0@main/secondbrain/docs/assets/release/v0.11.6/demo.mp4)</sub>
 
 | 采集 | 加工 |
 | --- | --- |
